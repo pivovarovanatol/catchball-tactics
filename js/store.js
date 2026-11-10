@@ -180,8 +180,8 @@ export async function publishPlays(list) {
       const folder = normFolder(list[i].folder);
       addFolders(idx, [folder]);
       const entry = { id: data.id, name: data.name, folder, file: `${data.id}.json`, updated: data.updated };
-      const i = idx.plays.findIndex((e) => e.id === data.id);
-      if (i >= 0) idx.plays[i] = entry; else idx.plays.push(entry);
+      const at = idx.plays.findIndex((e) => e.id === data.id);
+      if (at >= 0) idx.plays[at] = entry; else idx.plays.push(entry);
     }
   }, `Index: ${label(datas)}`);
 }
