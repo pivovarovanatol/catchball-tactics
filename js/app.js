@@ -35,10 +35,12 @@ function playLink(id) {
   return u.toString();
 }
 async function copyLink(play, msgEl) {
-  if (play._local) { say(msgEl, `“${play.name}” is only on this device. Save it with a GitHub token before sharing.`, 'err'); return; }
+  const inRepo = repoIds.has(play.id);
+  if (play._local && !inRepo) { say(msgEl, `“${play.name}” is only on this device. Publish it (☁ Publish) before sharing.`, 'err'); return; }
   const link = playLink(play.id);
-  try { await navigator.clipboard.writeText(link); say(msgEl, `Link copied: ${link}`, 'ok'); }
-  catch { say(msgEl, `Copy this link: ${link}`, 'ok'); }
+  const note = play._local ? ' Your latest changes to it are not published yet: press ☁ Publish.' : '';
+  try { await navigator.clipboard.writeText(link); say(msgEl, `Link copied: ${link}.${note}`, note ? 'err' : 'ok'); }
+  catch { say(msgEl, `Copy this link: ${link}.${note}`, note ? 'err' : 'ok'); }
 }
 
 // ---------- Coach mode ----------
@@ -630,6 +632,10 @@ function updateToolbar() {
   $('btnDup').disabled = lock || !openPlay();
   $('btnMove').disabled = lock || !targets().length;
   $('btnDel').disabled = lock || !targets().length;
+  const locals = plays.filter((p) => p._local).length;
+  $('btnPublish').classList.toggle('hide', !locals);
+  $('btnPublish').disabled = lock;
+  $('btnPublish').textContent = `☁ Publish ${locals} local play${locals === 1 ? '' : 's'}`;
 }
 
 $('btnEdit').onclick = () => { const p = openPlay(); if (p) { stopAnim(); view = null; openEditor(p); } };
@@ -640,6 +646,21 @@ $('btnNew').onclick = () => {
   openEditor({ id: null, name: '', folder, serving: free.serving, intro: '', start: { pos: clone(free.pos), ball: clone(free.ball) }, steps: [] });
 };
 $('btnFolder').onclick = () => newFolder('');
+$('btnPublish').onclick = async () => {
+  const list = plays.filter((p) => p._local);
+  const msg = $('listMsg');
+  if (!list.length) return;
+  if (!store.canPublish()) { say(msg, 'Add a GitHub token first (⚙).', 'err'); return; }
+  say(msg, `Publishing ${list.length} play${list.length === 1 ? '' : 's'}…`);
+  try {
+    const clean = list.map((p) => { const q = { ...p }; delete q._local; return q; });
+    await store.publishPlays(clean);
+    for (const p of clean) { store.removeLocal(p.id); repoIds.add(p.id); upsert(p); }
+    if (view && !view.returnToEdit) view.play = byId(view.play.id) || view.play;
+    renderTree();
+    say(msg, 'Published. The shared site updates in about a minute.', 'ok');
+  } catch (e) { say(msg, `Publishing failed: ${e.message}`, 'err'); }
+};
 $('btnDup').onclick = async () => {
   const p = openPlay();
   if (!p) return;
