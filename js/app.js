@@ -2,8 +2,8 @@
 import {
   KEYS, clone, clamp, dist, startZones, lineup, buildSnaps, ballPos, sameBall,
   autoTiming, stepArrows, describeStep, render, SHOTS, shotTiming, ballLift,
-} from './core.js?v=202611101240';
-import * as store from './store.js?v=202611101240';
+} from './core.js?v=202611101316';
+import * as store from './store.js?v=202611101316';
 
 const $ = (id) => document.getElementById(id);
 const svg = $('court');
@@ -903,4 +903,5 @@ async function init() {
 }
 // Test hook: jump to an exact moment of the open play (used by automated screenshots).
 window.cbSeek = (cursor, t) => { if (!view) return; stopAnim(); view.cursor = cursor; view.t = t; drawView(); };
+window.cbBall = () => (v3 ? v3.ballPosition() : null);
 init();

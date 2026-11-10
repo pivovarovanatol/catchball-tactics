@@ -216,11 +216,12 @@ function runPose(ph, k) {
 const holdPose = (p) => both(Object.assign({}, p), -0.95, -1.35, 0.2);
 const catchHigh = (p) => both(Object.assign({}, p, { neck: -0.45 }), -2.85, -0.25, 0.25);
 const catchMid = (p) => both(Object.assign({}, p, { neck: -0.15 }), -1.35, -0.5, 0.22);
-function overhandThrow(p, u) {          // right arm; u: 0 wind-up … 0.6 release … 1 follow-through
+function overhandThrow(p, u) {          // right arm; u: 0 wind-up … 0.45 cocked … 0.6 release (arm straight up) … 1 follow-through
   const o = Object.assign({}, p);
-  if (u < 0.6) { const w = u / 0.6; o.shR = -1.0 - 2.0 * w; o.elR = -0.6 - 1.2 * w; o.shL = -1.2 - 1.0 * w; o.elL = -0.3; o.spine = 0.1 - 0.3 * w; }
-  else { const w = (u - 0.6) / 0.4; o.shR = -3.0 + 2.3 * w; o.elR = -1.8 + 1.8 * w; o.shL = -2.2 + 1.6 * w; o.elL = -0.3; o.spine = -0.2 + 0.7 * w; }
-  o.abL = 0.15; o.abR = 0.1;
+  if (u < 0.45) { const w = smooth(u / 0.45); o.shR = -1.0 - 2.1 * w; o.elR = -0.6 - 1.3 * w; o.shL = -1.2 - 1.2 * w; o.elL = -0.3; o.spine = 0.1 - 0.35 * w; }
+  else if (u < 0.6) { const w = smooth((u - 0.45) / 0.15); o.shR = -3.1 + 0.25 * w; o.elR = -1.9 + 1.9 * w; o.shL = -2.4 + 0.6 * w; o.elL = -0.3; o.spine = -0.25 + 0.15 * w; }
+  else { const w = (u - 0.6) / 0.4; o.shR = -2.85 + 2.15 * w; o.elR = 0; o.shL = -1.8 + 1.0 * w; o.elL = -0.3; o.spine = -0.1 + 0.6 * w; }
+  o.abL = 0.15; o.abR = 0.06;
   return o;
 }
 function chestPass(p, u) {               // two hands from the chest, pushed out
@@ -235,9 +236,9 @@ function rainbowLob(p, u) {              // two hands swung from the hips up ove
 }
 function jumpLegs(o, h) { o.kneeL = o.kneeR = 0.3 + h * 0.9; o.hipL = o.hipR = -0.2 - h * 0.6; o.lift = h * 0.6; o.drop = 0; return o; }
 
-function applyPose(p, q, dt) {
-  // Ease towards the target pose so changes look natural
-  p.pose = p.pose ? mix(p.pose, q, Math.min(1, dt * 16)) : q;
+function applyPose(p, q, dt, exact) {
+  // Ease towards the target pose so changes look natural (throws follow their timing exactly)
+  p.pose = p.pose && !exact ? mix(p.pose, q, Math.min(1, dt * 16)) : q;
   const o = p.pose;
   p.hips[0].rotation.x = o.hipL; p.hips[1].rotation.x = o.hipR;
   p.knees[0].rotation.x = o.kneeL; p.knees[1].rotation.x = o.kneeR;
@@ -334,7 +335,16 @@ export function create(container) {
     const to = f.to.holder ? toWorld(frame.pos[f.to.holder]) : toWorld(f.to.point);
     const crosses = Math.sign(from.x) !== Math.sign(to.x);
     if (f.shot === 'rainbow') return { kind: 'lob', wind: 0.22, jump: false };
-    if (f.shot === 'spike') return { kind: 'over', wind: 0.4, jump: Math.abs(from.x) < 4.5 || Math.abs(from.x) > 9 };
+    if (f.shot === 'spike') {
+      // A spike flies in a straight line. If that line would hit the net, the attacker jumps higher (up to 0.55 m more).
+      let extra = 0;
+      if (crosses) {
+        const tc = from.x / (from.x - to.x), endY = f.to.holder ? 1.6 : BALL_R, contact = 2.8;
+        const need = (NET_H + 0.12 - endY * tc) / Math.max(0.05, 1 - tc);
+        extra = Math.max(0, Math.min(0.55, need - contact));
+      }
+      return { kind: 'over', wind: 0.4, jump: true, extra };
+    }
     if (Math.abs(from.x) > 9) return { kind: 'over', wind: 0.25, jump: false };      // serve from behind the end line
     if (crosses) return { kind: 'over', wind: 0.22, jump: Math.abs(from.x) < 3.5 };
     return { kind: 'pass', wind: 0.16, jump: false };
@@ -373,11 +383,16 @@ export function create(container) {
       // Actions on top
       if (frame.holder === k) q = holdPose(q);
       if (f && f.from.holder === k) {
-        const a = Math.min(1, f.t / Math.max(0.01, wind + 0.12));          // wind-up … release … follow-through
+        // Pose progress: 0 → 0.6 during the wind-up (0.6 = arm at the top, ball leaves the hand), 0.6 → 1 follow-through
+        const a = f.t < wind ? 0.6 * (f.t / Math.max(0.01, wind)) : Math.min(1, 0.6 + 0.4 * (f.t - wind) / 0.15);
         if (tk.kind === 'over') q = overhandThrow(q, a);
         else if (tk.kind === 'lob') q = rainbowLob(q, a);
         else q = chestPass(q, a);
-        if (tk.jump) { const h = Math.sin(Math.PI * Math.min(1, f.t / (wind + 0.15))); q = jumpLegs(q, Math.max(0, h)); }
+        // Jump peaks exactly at the release; spikes jump higher
+        if (tk.jump) {
+          const h = Math.max(0, Math.sin(Math.PI * Math.min(1, f.t / (2 * wind))));
+          q = jumpLegs(q, h * (f.shot === 'spike' ? 1.3 + (tk.extra || 0) / 0.6 : 1));
+        }
       }
       if (f && f.to.holder === k && u > 0.35) {
         const end = toWorld(frame.pos[k]);
@@ -385,7 +400,7 @@ export function create(container) {
         const w2 = smooth(Math.min(1, (u - 0.35) / 0.4));
         q = mix(q, high ? catchHigh(q) : catchMid(q), w2);
       }
-      applyPose(p, q, dt);
+      applyPose(p, q, dt, !!(f && f.from.holder === k));
     }
     for (const k of KEYS) players[k].group.updateMatrixWorld(true);
 
@@ -403,17 +418,17 @@ export function create(container) {
         const start = release.start;
         const end = f.to.holder ? handsMid(players[f.to.holder]) : toWorld(f.to.point).setY(BALL_R);
         let peak;
-        if (f.shot === 'spike') peak = 0.05;
+        if (f.shot === 'spike') peak = 0;
         else if (f.shot === 'rainbow') peak = Math.max(3.2, ((f.arc || 90) / U) * 1.6);
         else peak = Math.max(0.25, ((f.arc || 30) / U) * 1.25);
         // A ball that crosses the net must clear it
         if (Math.sign(start.x) !== Math.sign(end.x) && start.x !== end.x) {
           const tc = start.x / (start.x - end.x);
-          const need = NET_H + 0.35 - (start.y + (end.y - start.y) * tc);
+          const need = NET_H + (f.shot === 'spike' ? 0.12 : 0.35) - (start.y + (end.y - start.y) * tc);
           const lift = 4 * tc * (1 - tc);
           if (lift > 0.05 && peak * lift < need) peak = need / lift;
         }
-        const uu = f.shot === 'spike' ? u * u * 0.35 + u * 0.65 : u;  // spikes accelerate
+        const uu = u;
         ballPos = start.clone().lerp(end, uu);
         ballPos.y += 4 * peak * uu * (1 - uu);
         ball.rotation.x += dt * (f.shot === 'spike' ? 24 : 9);
@@ -494,5 +509,6 @@ export function create(container) {
     start() { if (running) return; running = true; last = 0; resize(); raf = requestAnimationFrame(loop); },
     stop() { running = false; cancelAnimationFrame(raf); },
     snapPlayers() { for (const k of KEYS) players[k].last = null; },
+    ballPosition() { return ball.position.toArray(); },
   };
 }
