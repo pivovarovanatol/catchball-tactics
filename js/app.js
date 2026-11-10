@@ -1,9 +1,9 @@
 // App: navigation tree, playback, free board, editor (coach mode), sharing and publishing.
 import {
   KEYS, clone, clamp, dist, startZones, lineup, buildSnaps, ballPos, sameBall,
-  autoTiming, stepArrows, describeStep, render,
-} from './core.js?v=202611101100';
-import * as store from './store.js?v=202611101100';
+  autoTiming, stepArrows, describeStep, render, SHOTS, shotTiming, ballLift,
+} from './core.js?v=202611101240';
+import * as store from './store.js?v=202611101240';
 
 const $ = (id) => document.getElementById(id);
 const svg = $('court');
@@ -138,7 +138,8 @@ function drawView() {
   const moving = t > 0 && cursor < n;
   if (moving && !sameBall(a.ball, b.ball)) {
     const s = ballPos(a, a.pos), f = ballPos(b, b.pos);
-    ballDraw = { x: s[0] + (f[0] - s[0]) * t, y: s[1] + (f[1] - s[1]) * t, lift: Math.sin(Math.PI * t) * (play.steps[cursor].arc || 30) };
+    const st = play.steps[cursor];
+    ballDraw = { x: s[0] + (f[0] - s[0]) * t, y: s[1] + (f[1] - s[1]) * t, lift: ballLift(t, st.arc, st.shot) };
   } else {
     const s = moving ? a : snaps[cursor];
     if (s.ball.holder) holder = s.ball.holder;
@@ -147,12 +148,13 @@ function drawView() {
 
   const arrows = [];
   const last = moving ? cursor : cursor - 1;
-  for (let k = 0; k <= last && k < n; k++) arrows.push(...stepArrows(snaps[k], snaps[k + 1], play.steps[k].arc, k === last ? 1 : 0.3));
+  for (let k = 0; k <= last && k < n; k++) arrows.push(...stepArrows(snaps[k], snaps[k + 1], play.steps[k].arc, k === last ? 1 : 0.3, play.steps[k].shot));
 
   render({ pos, serving: play.serving, holder, ballDraw, arrows, landing, showZones: showZones() });
   if (v3 && use3d) {
     const flying = moving && !sameBall(a.ball, b.ball);
-    v3.update({ pos, holder, flight: flying ? { from: a.ball, to: b.ball, t, arc: play.steps[cursor].arc } : null, rest: landing });
+    const st = play.steps[Math.min(cursor, n - 1)];
+    v3.update({ pos, holder, step: cursor, flight: flying ? { from: a.ball, to: b.ball, t, arc: st.arc, shot: st.shot || 'normal' } : null, rest: landing });
   }
 
   let text, label;
@@ -196,7 +198,7 @@ const sharePlay = () => view && copyLink(view.play, $('shareMsg'));
 
 // ---------- Editor ----------
 function openEditor(play) {
-  edit = { draft: clone(play), dirty: false, editing: null }; // editing: null = adding a step, -1 = start, i = step i
+  edit = { draft: clone(play), dirty: false, editing: null, shot: 'normal' }; // editing: null = adding a step, -1 = start, i = step i
   $('edName').value = play.name || '';
   $('edFolder').value = play.folder || '';
   currentId = play.id || null;
@@ -223,11 +225,13 @@ const roundPt = (p) => p.map((v) => Math.round(v));
 function startEditing(i) {
   edit.editing = i;
   $('edCap').value = i >= 0 ? (edit.draft.steps[i].cap || '') : '';
+  edit.shot = (i >= 0 && edit.draft.steps[i].shot) || 'normal';
   resetPending(); renderSteps(); drawEdit();
   say($('edMsg'), '');
 }
 function stopEditing() {
   edit.editing = null;
+  edit.shot = 'normal';
   $('edCap').value = '';
   resetPending(); renderSteps(); drawEdit();
 }
@@ -236,13 +240,16 @@ function stepFromPending() {
   for (const k of KEYS) if (dist(edit.base.pos[k], edit.pending.pos[k]) > 3) moves[k] = roundPt(edit.pending.pos[k]);
   const b = clone(edit.pending.ball);
   if (b.point) b.point = roundPt(b.point);
-  const tm = autoTiming(edit.base, edit.pending);
-  return { cap: $('edCap').value.trim(), dur: tm.dur, arc: Math.round(tm.arc), moves, ball: sameBall(edit.base.ball, edit.pending.ball) ? null : b };
+  const moved = !sameBall(edit.base.ball, edit.pending.ball);
+  const shot = moved && edit.shot !== 'normal' ? edit.shot : undefined;
+  const tm = shotTiming(edit.base, edit.pending, shot);
+  return { cap: $('edCap').value.trim(), dur: tm.dur, arc: Math.round(tm.arc), moves, ball: moved ? b : null, ...(shot ? { shot } : {}) };
 }
 function addStep() {
   if (!pendingChanged()) return;
   edit.draft.steps.push(stepFromPending());
   $('edCap').value = '';
+  edit.shot = 'normal';
   edit.dirty = true;
   resetPending(); renderSteps(); drawEdit();
   say($('edMsg'), '');
@@ -262,9 +269,14 @@ function drawEdit() {
   const d = edit.draft, n = d.steps.length, ei = edit.editing;
   const arrows = [];
   const prevIdx = ei === null ? n - 1 : ei - 1; // the step before the one being built, shown faintly
-  if (prevIdx >= 0) { const snaps = buildSnaps(d); arrows.push(...stepArrows(snaps[prevIdx], snaps[prevIdx + 1], d.steps[prevIdx].arc, 0.3)); }
-  const tm = autoTiming(edit.base, edit.pending);
-  arrows.push(...stepArrows(edit.base, edit.pending, tm.arc, 1));
+  if (prevIdx >= 0) { const snaps = buildSnaps(d); arrows.push(...stepArrows(snaps[prevIdx], snaps[prevIdx + 1], d.steps[prevIdx].arc, 0.3, d.steps[prevIdx].shot)); }
+  const ballMoved = !sameBall(edit.base.ball, edit.pending.ball);
+  const tm = shotTiming(edit.base, edit.pending, ballMoved ? edit.shot : undefined);
+  arrows.push(...stepArrows(edit.base, edit.pending, tm.arc, 1, ballMoved ? edit.shot : undefined));
+  // Shot picker: only meaningful when the ball goes somewhere in this step
+  $('shotRow').classList.toggle('disabled', !ballMoved || ei === -1);
+  for (const b of $('shotSeg').children) b.classList.toggle('on', b.dataset.shot === edit.shot);
+  $('shotHint').textContent = !ballMoved ? 'Move the ball in this step to pick a shot.' : (SHOTS[edit.shot].hint || '');
   const pb = edit.pending.ball;
   render({
     pos: edit.pending.pos, serving: d.serving, holder: pb.holder || null,
@@ -807,6 +819,7 @@ $('btnCloseView').onclick = closeView;
 
 // ---------- Editor buttons ----------
 const addOrUpdate = () => (edit.editing === null ? addStep() : updateStep());
+for (const b of $('shotSeg').children) b.onclick = () => { edit.shot = b.dataset.shot; drawEdit(); };
 $('edAdd').onclick = addOrUpdate;
 $('edCap').addEventListener('keydown', (e) => { if (e.key === 'Enter') addOrUpdate(); });
 $('edUndo').onclick = () => { if (edit.editing !== null) stopEditing(); else { resetPending(); drawEdit(); } };
@@ -888,4 +901,6 @@ async function init() {
   if (wanted && !p) say($('listMsg'), 'That play link was not found. It may have been deleted.', 'err');
   if (p) openView(p, false); else showFree();
 }
+// Test hook: jump to an exact moment of the open play (used by automated screenshots).
+window.cbSeek = (cursor, t) => { if (!view) return; stopAnim(); view.cursor = cursor; view.t = t; drawView(); };
 init();

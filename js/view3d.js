@@ -107,64 +107,144 @@ function buildCourt(scene) {
 }
 
 // ---------- Players ----------
+// Articulated figures built in code: hips, knees, spine, shoulders, elbows and head all bend, so the motions
+// below (ready stance, running, passes, overhand throws, spikes, rainbow lobs, catches) are made for catchball.
+// Local axes: +Z is where the player faces, +Y is up.
+
+const LOOKS = [
+  { skin: 0xf1c7a3, hair: 0x2b1d14, style: 'pony' }, { skin: 0xd9a77f, hair: 0x111111, style: 'short' },
+  { skin: 0x8d5a3b, hair: 0x0d0d0d, style: 'bun' }, { skin: 0xe8b98f, hair: 0x7a4a24, style: 'pony' },
+  { skin: 0xc68b62, hair: 0x1a1a1a, style: 'short' }, { skin: 0xf3d2b5, hair: 0xb98a3e, style: 'bun' },
+];
+
+function capsule(r, len, mat) { return new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 5, 12), mat); }
+
 function buildPlayer(key) {
   const color = TEAM[key[0]], num = key.slice(1);
-  const g = new THREE.Group();
-  const skin = new THREE.MeshStandardMaterial({ color: 0xd9a77f, roughness: 0.8 });
+  const look = LOOKS[(Number(num) + (key[0] === 'B' ? 3 : 0)) % LOOKS.length];
+  const skin = new THREE.MeshStandardMaterial({ color: look.skin, roughness: 0.75 });
   const shirt = new THREE.MeshStandardMaterial({ color, roughness: 0.55 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x1c1c22, roughness: 0.8 });
-  const add = (mesh, parent = g) => { mesh.castShadow = true; parent.add(mesh); return mesh; };
+  const white = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.7 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: look.hair, roughness: 0.9 });
+  const put = (mesh, parent, x = 0, y = 0, z = 0) => { mesh.position.set(x, y, z); mesh.castShadow = true; parent.add(mesh); return mesh; };
+  const joint = (parent, x, y, z) => { const g = new THREE.Group(); g.position.set(x, y, z); parent.add(g); return g; };
 
-  const body = new THREE.Group();       // lifted when jumping
-  g.add(body);
-  const limb = (r1, r2, len, mat) => { const geo = new THREE.CylinderGeometry(r1, r2, len, 10); geo.translate(0, -len / 2, 0); return new THREE.Mesh(geo, mat); };
+  const root = new THREE.Group();
+  const pelvis = joint(root, 0, 0.95, 0);
+  put(new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.19, 0.24, 14), dark), pelvis, 0, -0.04, 0);   // shorts
 
-  const hips = [];
+  const hips = [], knees = [];
   for (const side of [-1, 1]) {
-    const hip = new THREE.Group();
-    hip.position.set(0.1 * side, 0.9, 0);
-    add(limb(0.075, 0.055, 0.86, skin), hip);
-    const shoe = add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.07, 0.22), dark), hip);
-    shoe.position.set(0, -0.86, 0.05);
-    body.add(hip);
-    hips.push(hip);
+    const hip = joint(pelvis, 0.095 * side, -0.05, 0);
+    put(capsule(0.07, 0.3, skin), hip, 0, -0.21, 0);                       // thigh
+    const knee = joint(hip, 0, -0.43, 0);
+    put(new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.072, 0.11, 12), dark), knee, 0, -0.02, 0.012); // knee pad
+    put(capsule(0.055, 0.3, skin), knee, 0, -0.2, 0);                      // shin
+    put(new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.058, 0.12, 10), white), knee, 0, -0.36, 0); // sock
+    const shoe = put(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.25), white), knee, 0, -0.45, 0.05);
+    shoe.material = white;
+    hips.push(hip); knees.push(knee);
   }
-  const shorts = add(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.21, 0.24, 14), dark), body);
-  shorts.position.y = 0.92;
-  const torso = add(new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 0.4, 6, 14), shirt), body);
-  torso.position.y = 1.27;
-  torso.scale.z = 0.75;
-  const head = add(new THREE.Mesh(new THREE.SphereGeometry(0.115, 16, 12), skin), body);
-  head.position.y = 1.7;
-  const hair = add(new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), dark), body);
-  hair.position.y = 1.715;
 
-  const arms = [];
+  const spine = joint(pelvis, 0, 0.06, 0);
+  const torso = put(capsule(0.165, 0.3, shirt), spine, 0, 0.27, 0);
+  torso.scale.set(1.15, 1, 0.72);
+  put(new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.055, 0.1, 10), skin), spine, 0, 0.6, 0); // neck
+  const head = joint(spine, 0, 0.72, 0);
+  const skull = put(new THREE.Mesh(new THREE.SphereGeometry(0.11, 18, 14), skin), head);
+  skull.scale.set(0.95, 1.12, 1);
+  const hair = put(new THREE.Mesh(new THREE.SphereGeometry(0.117, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat), head, 0, 0.012, -0.008);
+  hair.scale.set(0.97, 1.12, 1.03);
+  if (look.style === 'pony') { const t = put(capsule(0.035, 0.16, hairMat), head, 0, -0.03, -0.12); t.rotation.x = 0.35; }
+  if (look.style === 'bun') put(new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 10), hairMat), head, 0, 0.08, -0.1);
+  for (const side of [-1, 1]) put(new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 6), dark), head, 0.038 * side, 0.02, 0.1); // eyes
+
+  const shoulders = [], elbows = [], hands = [];
   for (const side of [-1, 1]) {
-    const sh = new THREE.Group();
-    sh.position.set(0.25 * side, 1.47, 0);
-    sh.rotation.z = 0.12 * side;
-    const upper = add(limb(0.055, 0.045, 0.62, shirt), sh);
-    upper.material = skin;
-    body.add(sh);
-    arms.push(sh);
+    const sh = joint(spine, 0.215 * side, 0.5, 0);
+    put(new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.058, 0.13, 10), shirt), sh, 0, -0.05, 0); // sleeve
+    put(capsule(0.046, 0.2, skin), sh, 0, -0.15, 0);                        // upper arm
+    const el = joint(sh, 0, -0.29, 0);
+    put(capsule(0.04, 0.19, skin), el, 0, -0.13, 0);                        // forearm
+    put(new THREE.Mesh(new THREE.SphereGeometry(0.048, 10, 8), skin), el, 0, -0.27, 0.01); // hand
+    const hand = joint(el, 0, -0.29, 0.03);
+    shoulders.push(sh); elbows.push(el); hands.push(hand);
   }
-  // Jersey numbers, front and back
+
   const jersey = numberTexture(num, color, false);
-  for (const [z, ry] of [[0.15, 0], [-0.15, Math.PI]]) {
-    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.24), new THREE.MeshBasicMaterial({ map: jersey, transparent: true }));
-    plate.position.set(0, 1.3, z);
+  for (const [z, ry] of [[0.125, 0], [-0.125, Math.PI]]) {
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.2), new THREE.MeshBasicMaterial({ map: jersey, transparent: true }));
+    plate.position.set(0, 0.3, z);
     plate.rotation.y = ry;
-    body.add(plate);
+    spine.add(plate);
   }
-  // Floating label, always facing the camera
   const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: numberTexture(num, color, true), depthTest: false }));
   label.scale.set(0.42, 0.42, 1);
-  label.position.y = 2.2;
+  label.position.y = 2.25;
   label.renderOrder = 10;
-  body.add(label);
+  root.add(label);
 
-  return { group: g, body, hips, arms, label, yaw: key[0] === 'A' ? Math.PI / 2 : -Math.PI / 2, phase: 0, last: null, speed: 0, armL: 0, armR: 0 };
+  return {
+    group: root, pelvis, spine, head, hips, knees, shoulders, elbows, hands, label,
+    // body = what jumps (kept for the camera code)
+    body: pelvis,
+    yaw: key[0] === 'A' ? Math.PI / 2 : -Math.PI / 2, phase: Math.random() * 6, last: null, speed: 0, pose: null,
+  };
+}
+
+// A pose is a set of joint angles (radians) plus how far the hips drop (crouch) or rise (jump).
+const POSE_KEYS = ['hipL', 'hipR', 'kneeL', 'kneeR', 'shL', 'shR', 'abL', 'abR', 'elL', 'elR', 'spine', 'neck', 'drop', 'lift'];
+const pose = (o) => Object.assign(Object.fromEntries(POSE_KEYS.map((k) => [k, 0])), o);
+const mix = (a, b, w) => { const o = {}; for (const k of POSE_KEYS) o[k] = a[k] + (b[k] - a[k]) * w; return o; };
+const both = (o, sh, el, ab = 0.12) => Object.assign(o, { shL: sh, shR: sh, elL: el, elR: el, abL: ab, abR: ab });
+
+function readyPose(t) {
+  const b = Math.sin(t * 2.2) * 0.03;
+  return pose({ hipL: -0.45, hipR: -0.4, kneeL: 0.8 + b, kneeR: 0.75 + b, spine: 0.3, neck: -0.25, drop: 0.13 + b * 0.2,
+    shL: -0.55, shR: -0.55, elL: -1.0, elR: -1.0, abL: 0.2, abR: 0.2 });
+}
+function runPose(ph, k) {
+  const s = Math.sin(ph), c = Math.cos(ph);
+  return pose({
+    hipL: -s * 0.8 * k - 0.15, hipR: s * 0.8 * k - 0.15,
+    kneeL: (0.35 + Math.max(0, c) * 1.1) * k + 0.2, kneeR: (0.35 + Math.max(0, -c) * 1.1) * k + 0.2,
+    shL: s * 0.7 * k, shR: -s * 0.7 * k, elL: -1.4, elR: -1.4, abL: 0.12, abR: 0.12,
+    spine: 0.15 + 0.15 * k, neck: -0.1, drop: 0.05 + Math.abs(c) * 0.04 * k,
+  });
+}
+const holdPose = (p) => both(Object.assign({}, p), -0.95, -1.35, 0.2);
+const catchHigh = (p) => both(Object.assign({}, p, { neck: -0.45 }), -2.85, -0.25, 0.25);
+const catchMid = (p) => both(Object.assign({}, p, { neck: -0.15 }), -1.35, -0.5, 0.22);
+function overhandThrow(p, u) {          // right arm; u: 0 wind-up … 0.6 release … 1 follow-through
+  const o = Object.assign({}, p);
+  if (u < 0.6) { const w = u / 0.6; o.shR = -1.0 - 2.0 * w; o.elR = -0.6 - 1.2 * w; o.shL = -1.2 - 1.0 * w; o.elL = -0.3; o.spine = 0.1 - 0.3 * w; }
+  else { const w = (u - 0.6) / 0.4; o.shR = -3.0 + 2.3 * w; o.elR = -1.8 + 1.8 * w; o.shL = -2.2 + 1.6 * w; o.elL = -0.3; o.spine = -0.2 + 0.7 * w; }
+  o.abL = 0.15; o.abR = 0.1;
+  return o;
+}
+function chestPass(p, u) {               // two hands from the chest, pushed out
+  const w = smooth(Math.min(1, u / 0.7));
+  return both(Object.assign({}, p), -0.9 - 0.6 * w, -1.5 + 1.4 * w, 0.2);
+}
+function rainbowLob(p, u) {              // two hands swung from the hips up over the head, legs extending
+  const w = smooth(Math.min(1, u / 0.75));
+  const o = both(Object.assign({}, p), -0.4 - 2.4 * w, -0.5 + 0.4 * w, 0.18);
+  o.kneeL = o.kneeR = 0.9 * (1 - w) + 0.1; o.hipL = o.hipR = -0.5 * (1 - w); o.drop = 0.18 * (1 - w); o.spine = 0.35 - 0.45 * w;
+  return o;
+}
+function jumpLegs(o, h) { o.kneeL = o.kneeR = 0.3 + h * 0.9; o.hipL = o.hipR = -0.2 - h * 0.6; o.lift = h * 0.6; o.drop = 0; return o; }
+
+function applyPose(p, q, dt) {
+  // Ease towards the target pose so changes look natural
+  p.pose = p.pose ? mix(p.pose, q, Math.min(1, dt * 16)) : q;
+  const o = p.pose;
+  p.hips[0].rotation.x = o.hipL; p.hips[1].rotation.x = o.hipR;
+  p.knees[0].rotation.x = o.kneeL; p.knees[1].rotation.x = o.kneeR;
+  p.shoulders[0].rotation.set(o.shL, 0, -o.abL); p.shoulders[1].rotation.set(o.shR, 0, o.abR);
+  p.elbows[0].rotation.x = o.elL; p.elbows[1].rotation.x = o.elR;
+  p.spine.rotation.x = o.spine; p.head.rotation.x = o.neck;
+  p.pelvis.position.y = 0.95 - o.drop + o.lift;
 }
 
 const angleTo = (from, to) => Math.atan2(to.x - from.x, to.z - from.z);
@@ -235,27 +315,38 @@ export function create(container) {
   camera.position.set(...CAMERAS.tv.pos);
   controls.target.set(...CAMERAS.tv.target);
 
-  // Latest frame from the app: { pos, holder, flight: { from, to, t, arc } | null, rest: [x,y] | null }
+  // Latest frame from the app:
+  // { pos, holder, step, flight: { from, to, t, arc, shot } | null, rest: [x,y] | null }
   let frame = null;
-  const handPos = (k, up) => {
-    const p = players[k];
-    const fwd = new THREE.Vector3(Math.sin(p.yaw), 0, Math.cos(p.yaw));
-    return p.group.position.clone().add(fwd.multiplyScalar(0.3)).setY(p.body.position.y + (up ? 2.05 : HAND_Y));
-  };
+  let release = null;            // where the ball left the thrower's hand, per step
 
-  function applyFrame(dt) {
+  const handsMid = (p) => {
+    const a = new THREE.Vector3(), b = new THREE.Vector3();
+    p.hands[0].getWorldPosition(a); p.hands[1].getWorldPosition(b);
+    return a.add(b).multiplyScalar(0.5);
+  };
+  const rightHand = (p) => { const v = new THREE.Vector3(); p.hands[1].getWorldPosition(v); return v; };
+
+  // What kind of throw a flight is, from the shot type and where the thrower is.
+  function throwKind(f) {
+    if (!f.from.holder) return null;
+    const from = toWorld(frame.pos[f.from.holder]);
+    const to = f.to.holder ? toWorld(frame.pos[f.to.holder]) : toWorld(f.to.point);
+    const crosses = Math.sign(from.x) !== Math.sign(to.x);
+    if (f.shot === 'rainbow') return { kind: 'lob', wind: 0.22, jump: false };
+    if (f.shot === 'spike') return { kind: 'over', wind: 0.4, jump: Math.abs(from.x) < 4.5 || Math.abs(from.x) > 9 };
+    if (Math.abs(from.x) > 9) return { kind: 'over', wind: 0.25, jump: false };      // serve from behind the end line
+    if (crosses) return { kind: 'over', wind: 0.22, jump: Math.abs(from.x) < 3.5 };
+    return { kind: 'pass', wind: 0.16, jump: false };
+  }
+
+  function applyFrame(dt, now) {
     if (!frame) return;
     const f = frame.flight;
-    let ballPos = null;
-
-    // Who jumps: an attacker at the net throwing over it, or a server.
-    let jumper = null, jumpT = 0;
-    if (f && f.from.holder) {
-      const from = toWorld(frame.pos[f.from.holder]);
-      const toP = f.to.holder ? toWorld(frame.pos[f.to.holder]) : toWorld(f.to.point);
-      const crosses = Math.sign(from.x) !== Math.sign(toP.x);
-      if (crosses && Math.abs(from.x) < 3.5 && f.t < 0.4) { jumper = f.from.holder; jumpT = f.t / 0.4; }
-    }
+    const tk = f ? throwKind(f) : null;
+    const wind = tk ? tk.wind : 0;
+    const u = f ? (tk ? Math.max(0, (f.t - wind) / (1 - wind)) : f.t) : 0;   // ball's own progress after release
+    if (!f || frame.step !== (release && release.step)) release = null;
 
     for (const k of KEYS) {
       const p = players[k];
@@ -266,51 +357,71 @@ export function create(container) {
       p.group.position.copy(w);
       p.speed = approach(p.speed, vel.length(), 10, dt);
 
-      // Facing: where they run, otherwise towards the ball
+      // Facing: thrower faces the target, others face where they run or the ball
       let target = p.yaw;
-      if (p.speed > 0.6) target = Math.atan2(vel.x, vel.z);
-      else if (ball.position.lengthSq() > 0) target = angleTo(w, ball.position);
+      if (f && f.from.holder === k && u === 0) target = angleTo(w, f.to.holder ? toWorld(frame.pos[f.to.holder]) : toWorld(f.to.point));
+      else if (p.speed > 0.6) target = Math.atan2(vel.x, vel.z);
+      else target = angleTo(w, ball.position);
       p.yaw += wrap(target - p.yaw) * Math.min(1, dt * 7);
       p.group.rotation.y = p.yaw;
 
-      // Running legs and arms
-      const stride = Math.min(1, p.speed / 4);
-      p.phase += dt * (4 + p.speed * 2.2);
-      const swing = Math.sin(p.phase) * 0.75 * stride;
-      p.hips[0].rotation.x = swing;
-      p.hips[1].rotation.x = -swing;
+      // Base: ready stance blended into running
+      p.phase += dt * (3 + p.speed * 2.4);
+      const k1 = Math.min(1, p.speed / 3.5);
+      let q = mix(readyPose(now / 1000 + p.phase * 0.1), runPose(p.phase, Math.max(0.35, k1)), smooth(Math.min(1, p.speed / 1.2)));
 
-      // Arm poses: holding, catching, throwing, running
-      let armL = -swing * 0.8, armR = swing * 0.8;
-      if (frame.holder === k) { armL = armR = -1.15; }
-      if (f && f.to.holder === k && f.t > 0.45) { const u = smooth(Math.min(1, (f.t - 0.45) / 0.4)); armL = armR = -1.15 - 1.5 * u; }
-      if (f && f.from.holder === k && f.t < 0.3) { const u = 1 - f.t / 0.3; armL = armR = -2.6 * u - 0.3; }
-      p.armL = approach(p.armL, armL, 14, dt);
-      p.armR = approach(p.armR, armR, 14, dt);
-      p.arms[0].rotation.x = p.armL;
-      p.arms[1].rotation.x = p.armR;
-
-      p.body.position.y = k === jumper ? Math.sin(Math.PI * jumpT) * 0.55 : approach(p.body.position.y, 0, 12, dt);
-    }
-
-    if (f) {
-      const start = f.from.holder ? handPos(f.from.holder, f.from.holder === jumper) : toWorld(f.from.point).setY(BALL_R);
-      const end = f.to.holder ? handPos(f.to.holder, true) : toWorld(f.to.point).setY(BALL_R);
-      let peak = Math.max(0.25, ((f.arc || 30) / U) * 1.25);
-      // Make sure a ball that crosses the net clears it
-      if (Math.sign(start.x) !== Math.sign(end.x) && start.x !== end.x) {
-        const tc = start.x / (start.x - end.x);
-        const need = NET_H + 0.45 - (start.y + (end.y - start.y) * tc);
-        const lift = 4 * tc * (1 - tc);
-        if (lift > 0.05 && peak * lift < need) peak = need / lift;
+      // Actions on top
+      if (frame.holder === k) q = holdPose(q);
+      if (f && f.from.holder === k) {
+        const a = Math.min(1, f.t / Math.max(0.01, wind + 0.12));          // wind-up … release … follow-through
+        if (tk.kind === 'over') q = overhandThrow(q, a);
+        else if (tk.kind === 'lob') q = rainbowLob(q, a);
+        else q = chestPass(q, a);
+        if (tk.jump) { const h = Math.sin(Math.PI * Math.min(1, f.t / (wind + 0.15))); q = jumpLegs(q, Math.max(0, h)); }
       }
-      ballPos = start.clone().lerp(end, f.t);
-      ballPos.y += 4 * peak * f.t * (1 - f.t);
-      ball.rotation.x += dt * 9;
-      ball.rotation.z += dt * 4;
+      if (f && f.to.holder === k && u > 0.35) {
+        const end = toWorld(frame.pos[k]);
+        const high = (f.shot === 'rainbow') || (tk && tk.kind !== 'pass' && Math.abs(end.x) < 9);
+        const w2 = smooth(Math.min(1, (u - 0.35) / 0.4));
+        q = mix(q, high ? catchHigh(q) : catchMid(q), w2);
+      }
+      applyPose(p, q, dt);
+    }
+    for (const k of KEYS) players[k].group.updateMatrixWorld(true);
+
+    let ballPos = null;
+    if (f) {
+      const thrower = f.from.holder && players[f.from.holder];
+      if (thrower && u === 0) {
+        // Still winding up: ball in the hand (right hand for overhand throws)
+        ballPos = tk.kind === 'over' ? rightHand(thrower) : handsMid(thrower);
+      } else {
+        if (!release) {
+          const start = thrower ? (tk.kind === 'over' ? rightHand(thrower) : handsMid(thrower)) : toWorld(f.from.point).setY(BALL_R);
+          release = { step: frame.step, start };
+        }
+        const start = release.start;
+        const end = f.to.holder ? handsMid(players[f.to.holder]) : toWorld(f.to.point).setY(BALL_R);
+        let peak;
+        if (f.shot === 'spike') peak = 0.05;
+        else if (f.shot === 'rainbow') peak = Math.max(3.2, ((f.arc || 90) / U) * 1.6);
+        else peak = Math.max(0.25, ((f.arc || 30) / U) * 1.25);
+        // A ball that crosses the net must clear it
+        if (Math.sign(start.x) !== Math.sign(end.x) && start.x !== end.x) {
+          const tc = start.x / (start.x - end.x);
+          const need = NET_H + 0.35 - (start.y + (end.y - start.y) * tc);
+          const lift = 4 * tc * (1 - tc);
+          if (lift > 0.05 && peak * lift < need) peak = need / lift;
+        }
+        const uu = f.shot === 'spike' ? u * u * 0.35 + u * 0.65 : u;  // spikes accelerate
+        ballPos = start.clone().lerp(end, uu);
+        ballPos.y += 4 * peak * uu * (1 - uu);
+        ball.rotation.x += dt * (f.shot === 'spike' ? 24 : 9);
+        ball.rotation.z += dt * 4;
+      }
       ring.visible = false;
     } else if (frame.holder) {
-      ballPos = handPos(frame.holder, false);
+      ballPos = handsMid(players[frame.holder]);
       ring.visible = false;
     } else if (frame.rest) {
       ballPos = toWorld(frame.rest).setY(BALL_R);
@@ -320,15 +431,15 @@ export function create(container) {
     if (ballPos) {
       ball.position.copy(ballPos);
       ballShadow.position.set(ballPos.x, 0.008, ballPos.z);
-      const s = 1 / (1 + ballPos.y * 0.25);
-      ballShadow.scale.set(s, s, s);
+      const sc = 1 / (1 + ballPos.y * 0.25);
+      ballShadow.scale.set(sc, sc, sc);
     }
   }
 
   function updateCamera(dt) {
     if (camMode.startsWith('p:')) {
       const p = players[camMode.slice(2)];
-      const eye = p.group.position.clone().setY(p.body.position.y + 1.65);
+      const eye = new THREE.Vector3(); p.head.getWorldPosition(eye); eye.y += 0.03;
       const look = ball.position.clone();
       if (look.distanceTo(eye) < 1.2) look.set(0, 1.4, eye.z * 0.5); // ball in own hands: look at the net
       // Turn the head smoothly instead of snapping to the ball
@@ -371,7 +482,7 @@ export function create(container) {
     if (!running) return;
     const dt = Math.min(0.05, (now - (last || now)) / 1000);
     last = now;
-    applyFrame(dt);
+    applyFrame(dt, now);
     updateCamera(dt);
     renderer.render(scene, camera);
     raf = requestAnimationFrame(loop);

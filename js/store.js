@@ -95,6 +95,7 @@ export function clean(play) {
       arc: Math.round(s.arc || 0),
       moves: roundPositions(s.moves || {}),
       ball: s.ball ? (s.ball.point ? { point: round(s.ball.point) } : { holder: s.ball.holder }) : null,
+      ...(s.shot && s.shot !== 'normal' ? { shot: s.shot } : {}),
     })),
   };
 }

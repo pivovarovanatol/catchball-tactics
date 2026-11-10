@@ -53,6 +53,24 @@ export const ballPos = (s, pos) => (s.ball.holder ? [pos[s.ball.holder][0] + 12,
 export const sameBall = (a, b) => (a.holder ? a.holder === b.holder : !!b.point && dist(a.point, b.point) < 1);
 
 /** Duration (ms) and ball arc height for a step, from how far the ball and players travel. */
+// Ball shots. "normal" is a regular throw or pass.
+export const SHOTS = {
+  normal: { label: 'Normal', icon: '' },
+  spike: { label: 'Spike', icon: '⚡', hint: 'straight and fast' },
+  rainbow: { label: 'Rainbow', icon: '🌈', hint: 'high, slow arc' },
+};
+
+/** Duration and arc for a step, adjusted for the kind of shot. */
+export function shotTiming(a, b, shot) {
+  const base = autoTiming(a, b);
+  if (!shot || shot === 'normal' || sameBall(a.ball, b.ball)) return base;
+  const d = dist(ballPos(a, a.pos), ballPos(b, b.pos));
+  let run = 0;
+  for (const k of KEYS) run = Math.max(run, dist(a.pos[k], b.pos[k]));
+  if (shot === 'spike') return { arc: 4, dur: Math.round(clamp(Math.max(380 + d * 0.9, 300 + run * 2.2), 500, 1100)) };
+  return { arc: Math.round(clamp(d * 0.35, 75, 140)), dur: Math.round(clamp(Math.max(1100 + d * 2.4, 500 + run * 3.2), 1400, 2800)) };
+}
+
 export function autoTiming(a, b) {
   const ballMoved = !sameBall(a.ball, b.ball);
   const bs = ballPos(a, a.pos), be = ballPos(b, b.pos);
@@ -65,19 +83,25 @@ export function autoTiming(a, b) {
   return { arc, dur };
 }
 
-export function stepArrows(a, b, arc, opacity) {
+export function stepArrows(a, b, arc, opacity, shot) {
   const list = [];
   for (const k of KEYS) if (dist(a.pos[k], b.pos[k]) > 3) list.push({ from: a.pos[k], to: b.pos[k], kind: k[0], opacity });
   if (!sameBall(a.ball, b.ball)) {
     const s = ballPos(a, a.pos), e = ballPos(b, b.pos);
-    list.push({ from: s, to: e, kind: 'ball', bend: (e[0] > s[0] ? -1 : 1) * (arc || 30) * 0.55, opacity });
+    const side = e[0] > s[0] ? -1 : 1;
+    const bend = shot === 'spike' ? 0 : shot === 'rainbow' ? side * Math.max(arc || 0, 75) * 0.75 : side * (arc || 30) * 0.55;
+    list.push({ from: s, to: e, kind: 'ball', shot: shot || 'normal', bend, opacity });
   }
   return list;
 }
 
+/** Ball height (drawing units) at progress t of a step, for the 2D ball's "lift". */
+export const ballLift = (t, arc, shot) => Math.sin(Math.PI * t) * (shot === 'spike' ? 4 : shot === 'rainbow' ? Math.max(arc || 0, 75) * 0.8 : (arc || 30));
+
 export function describeStep(step) {
   const parts = [];
-  if (step.ball) parts.push(step.ball.holder ? 'ball → ' + keyName(step.ball.holder) : 'ball → lands on floor');
+  const sh = step.shot && SHOTS[step.shot] && step.shot !== 'normal' ? `${SHOTS[step.shot].icon} ${SHOTS[step.shot].label.toLowerCase()} ` : '';
+  if (step.ball) parts.push(sh + (step.ball.holder ? 'ball → ' + keyName(step.ball.holder) : 'ball → lands on floor'));
   const runs = Object.keys(step.moves || {});
   if (runs.length) parts.push('running: ' + runs.map(keyName).join(', '));
   return parts.join(' · ');
@@ -128,12 +152,21 @@ export function render(scene) {
     const dAttr = ar.bend
       ? `M${x1} ${y1} Q${(x1 + x2) / 2 - uy * ar.bend} ${(y1 + y2) / 2 + ux * ar.bend} ${x2} ${y2}`
       : `M${x1} ${y1} L${x2} ${y2}`;
+    const spike = isBall && ar.shot === 'spike', rainbow = isBall && ar.shot === 'rainbow';
     const path = el('path', {
-      d: dAttr, fill: 'none', stroke: isBall ? '#fff6d0' : COLORS[ar.kind], 'stroke-width': 2.6,
-      'stroke-linecap': 'round', opacity: ar.opacity ?? 1, 'marker-end': `url(#${isBall ? 'arBall' : 'ar' + ar.kind})`,
+      d: dAttr, fill: 'none', stroke: spike ? '#ffd23f' : rainbow ? '#bfe9ff' : isBall ? '#fff6d0' : COLORS[ar.kind],
+      'stroke-width': spike ? 3.6 : 2.6, 'stroke-linecap': 'round', opacity: ar.opacity ?? 1,
+      'marker-end': `url(#${spike ? 'arSpike' : rainbow ? 'arRainbow' : isBall ? 'arBall' : 'ar' + ar.kind})`,
     });
-    if (isBall) path.setAttribute('stroke-dasharray', '7 6');
+    if (isBall && !spike) path.setAttribute('stroke-dasharray', rainbow ? '2 6' : '7 6');
     al.appendChild(path);
+    if (spike || rainbow) {
+      // A small badge in the middle of the ball's path
+      const mx = ar.bend ? (x1 + x2) / 2 - (uy * ar.bend) / 2 : (x1 + x2) / 2, my = ar.bend ? (y1 + y2) / 2 + (ux * ar.bend) / 2 : (y1 + y2) / 2;
+      const t = el('text', { x: mx, y: my, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': 15, opacity: ar.opacity ?? 1 });
+      t.textContent = spike ? '⚡' : '🌈';
+      al.appendChild(t);
+    }
   }
 
   // Players

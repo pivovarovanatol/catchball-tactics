@@ -49,6 +49,7 @@ so it stays the same when a play is renamed.
 | `ball` | Where the ball goes: `{ "holder": "B3" }` (thrown or passed to a player), `{ "point": [x, y] }` (lands on the floor), or `null` (stays where it is, moving with its holder). |
 | `dur` | Duration in milliseconds at 1× speed. |
 | `arc` | How high the ball flies (drawing units). 0 when the ball doesn't move. |
+| `shot` | Optional. `"spike"` (straight and fast) or `"rainbow"` (high, slow arc). Missing means a normal throw. |
 
 ## Coordinates
 

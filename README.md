@@ -9,9 +9,13 @@ Coaches record set plays step by step. Players open a link and watch the play an
 
 - **Browse plays** in the sidebar: a folder tree with search. Click a play to open it.
 - **Watch plays.** Press ▶ Play, or use ⏮ ⏭ to go one step at a time. Blue arrows show where players run, the dashed line shows the ball.
-- **Watch in 3D.** Press **🧊 3D** under any play: the same play on a 3D court, with players running, catching and
-  throwing and the ball flying in real arcs. Pick a camera (TV, corner, behind either team, from above, or through any
+- **Watch in 3D.** Press **🧊 3D** under any play: the same play on a 3D court. Players stand in a ready stance, run,
+  pass from the chest, throw overhand, jump to spike at the net, lob rainbows, and catch at chest or over their heads;
+  the ball follows the shot type. Pick a camera (TV, corner, behind either team, from above, or through any
   player's eyes), drag to rotate, scroll/pinch to zoom, ⛶ for full screen. **▦ 2D** switches back. Your choice is remembered.
+- **Shot types.** A step where the ball moves can be a normal throw, a **⚡ spike** (straight, hard and fast, drawn as a
+  solid yellow line) or a **🌈 rainbow** (a high, slow parachute arc, drawn as a dotted blue curve). Pick it in the editor's
+  *Shot* row; timing and ball height adjust automatically, in 2D and in 3D.
 - **Share a play.** The 🔗 next to a play (or 🔗 Share under the court) copies a direct link such as
   `…/catchball-tactics/?play=switch-3-and-4-attack-by-3`. The link opens straight into that play.
 - **Free board** (📌 at the top of the list). Drag players around, choose the serving team, and rotate either team.

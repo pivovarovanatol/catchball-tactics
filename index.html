@@ -11,7 +11,7 @@
     "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
 } }
 </script>
-<link rel="stylesheet" href="css/style.css?v=202611101100">
+<link rel="stylesheet" href="css/style.css?v=202611101240">
 </head>
 <body>
 <div class="wrap">
@@ -76,6 +76,8 @@
           <marker id="arA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#1f5fbf"/></marker>
           <marker id="arB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#c8362d"/></marker>
           <marker id="arBall" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#fff6d0"/></marker>
+          <marker id="arSpike" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#ffd23f"/></marker>
+          <marker id="arRainbow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#bfe9ff"/></marker>
         </defs>
 
         <rect id="floorbg" x="-75" y="-48" width="690" height="366" rx="8" fill="var(--free)"/>
@@ -174,6 +176,8 @@
         <div class="key">
           <span><svg width="34" height="10"><line x1="2" y1="5" x2="28" y2="5" stroke="#1f5fbf" stroke-width="2.5"/><path d="M26 1 L33 5 L26 9z" fill="#1f5fbf"/></svg>player movement</span>
           <span><svg width="34" height="10"><line x1="2" y1="5" x2="28" y2="5" stroke="#8a6d00" stroke-width="2.5" stroke-dasharray="4 3"/><path d="M26 1 L33 5 L26 9z" fill="#8a6d00"/></svg>ball flight</span>
+          <span>⚡ spike: straight, fast</span>
+          <span>🌈 rainbow: high arc</span>
         </div>
       </div>
 
@@ -187,6 +191,15 @@
         <div class="edhint" id="edHint"></div>
         <div class="row">
           <input type="text" id="edCap" placeholder="Step caption: what happens (optional)">
+        </div>
+        <div class="shotrow" id="shotRow">
+          <span class="lbl">Shot</span>
+          <div class="seg" id="shotSeg">
+            <button data-shot="normal" title="Regular throw or pass">Normal</button>
+            <button data-shot="spike" title="Straight, hard and fast, like a volleyball spike">⚡ Spike</button>
+            <button data-shot="rainbow" title="High, slow arc (parachute) over the defense">🌈 Rainbow</button>
+          </div>
+          <span class="hint" id="shotHint"></span>
         </div>
         <div class="row" style="margin-top:8px">
           <button id="edAdd" class="primary">+ Add step</button>
@@ -238,6 +251,6 @@
   </div>
 </dialog>
 
-<script type="module" src="js/app.js?v=202611101100"></script>
+<script type="module" src="js/app.js?v=202611101240"></script>
 </body>
 </html>
