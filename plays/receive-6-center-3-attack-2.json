@@ -4,7 +4,7 @@
   "name": "Receive 6 → center 3 → attack 2",
   "serving": "B",
   "intro": "Starting lineup: Red serves, Blue receives.",
-  "updated": "2026-11-10T03:28:58Z",
+  "updated": "2026-11-10T21:10:52.389Z",
   "start": {
     "pos": {
       "A1": [
@@ -121,15 +121,16 @@
     },
     {
       "cap": "Blue 2 attacks with a cross-court throw into the open gap between players. Point Blue!",
-      "dur": 900,
-      "arc": 26,
+      "dur": 541,
+      "arc": 4,
       "moves": {},
       "ball": {
         "point": [
           398,
           92
         ]
-      }
+      },
+      "shot": "spike"
     }
   ]
 }
