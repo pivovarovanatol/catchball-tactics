@@ -2,8 +2,8 @@
 import {
   KEYS, clone, clamp, dist, startZones, lineup, buildSnaps, ballPos, sameBall,
   autoTiming, stepArrows, describeStep, render, SHOTS, shotTiming, ballLift,
-} from './core.js?v=202611101323';
-import * as store from './store.js?v=202611101323';
+} from './core.js?v=202611101354';
+import * as store from './store.js?v=202611101354';
 
 const $ = (id) => document.getElementById(id);
 const svg = $('court');
@@ -154,7 +154,11 @@ function drawView() {
   if (v3 && use3d) {
     const flying = moving && !sameBall(a.ball, b.ball);
     const st = play.steps[Math.min(cursor, n - 1)];
-    v3.update({ pos, holder, step: cursor, flight: flying ? { from: a.ball, to: b.ball, t, arc: st.arc, shot: st.shot || 'normal' } : null, rest: landing });
+    // The next throw by whoever holds the ball (so a server or attacker can carry it one-handed)
+    let next = null;
+    const ni = moving ? cursor + 1 : cursor;
+    if (holder && ni < n && !sameBall(snaps[ni].ball, snaps[ni + 1].ball)) next = { from: snaps[ni].ball, to: snaps[ni + 1].ball, shot: play.steps[ni].shot || 'normal' };
+    v3.update({ pos, holder, step: cursor, next, flight: flying ? { from: a.ball, to: b.ball, t, arc: st.arc, shot: st.shot || 'normal' } : null, rest: landing });
   }
 
   let text, label;

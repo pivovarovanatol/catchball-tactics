@@ -204,7 +204,7 @@ const both = (o, sh, el, ab = 0.12) => Object.assign(o, { shL: sh, shR: sh, elL:
 function readyPose(t) {
   const b = Math.sin(t * 2.2) * 0.03;
   return pose({ hipL: -0.45, hipR: -0.4, kneeL: 0.8 + b, kneeR: 0.75 + b, spine: 0.3, neck: -0.25, drop: 0.13 + b * 0.2,
-    shL: -0.55, shR: -0.55, elL: -1.0, elR: -1.0, abL: 0.2, abR: 0.2 });
+    shL: -2.2, shR: -2.2, elL: -0.75, elR: -0.75, abL: 0.35, abR: 0.35 });
 }
 function runPose(ph, k) {
   const s = Math.sin(ph), c = Math.cos(ph);
@@ -236,6 +236,7 @@ function rainbowLob(p, u) {              // two hands swung from the hips up ove
   o.kneeL = o.kneeR = 0.9 * (1 - w) + 0.1; o.hipL = o.hipR = -0.5 * (1 - w); o.drop = 0.18 * (1 - w); o.spine = 0.35 - 0.45 * w;
   return o;
 }
+const blockPose = (p) => both(Object.assign({}, p, { neck: -0.2, spine: 0.05 }), -2.95, -0.1, 0.12);
 function jumpLegs(o, h) { o.kneeL = o.kneeR = 0.3 + h * 0.9; o.hipL = o.hipR = -0.2 - h * 0.6; o.lift = h * 0.6; o.drop = 0; return o; }
 
 function applyPose(p, q, dt, exact) {
@@ -264,6 +265,10 @@ const smooth = (t) => t * t * (3 - 2 * t);
 // The right arm mirrors X. `up` = upper arm (shoulder → elbow), `fore` = forearm (elbow → wrist).
 const ARM = {
   hold: { up: [0.25, -0.75, 0.6], fore: [-0.45, 0.15, 0.88] },
+  // Waiting stance: elbows raised to about head height, forearms up, hands a little above the head
+  ready: { up: [0.45, 0.62, 0.64], fore: [-0.12, 0.92, 0.37] },
+  // Block: both arms straight up and slightly forward over the net
+  block: { up: [0.16, 0.95, 0.27], fore: [0.04, 0.95, 0.32] },
   high: { up: [0.3, 0.9, 0.3], fore: [0.15, 0.95, 0.25] },
   mid: { up: [0.2, -0.25, 0.95], fore: [-0.15, 0.15, 1] },
   passEnd: { up: [0.12, -0.05, 1], fore: [0, 0, 1] },
@@ -272,8 +277,12 @@ const ARM = {
   cocked: { up: [0.5, 0.8, -0.15], fore: [0.1, 0.6, -0.8] },
   reach: { up: [0.1, 0.97, 0.2], fore: [0.05, 0.97, 0.25] },
   follow: { up: [0.1, -0.5, 0.85], fore: [0, -0.8, 0.6] },
-  guideUp: { up: [0.2, 0.8, 0.55], fore: [0.1, 0.9, 0.4] },
-  guideDown: { up: [0.2, -0.8, 0.5], fore: [0.05, -0.6, 0.8] },
+  // Free arm during a one-handed throw: points forward at the target, then drops
+  guideUp: { up: [0.32, 0.2, 0.93], fore: [0.08, 0.3, 0.95] },
+  guideDown: { up: [0.25, -0.85, 0.45], fore: [0.05, -0.6, 0.8] },
+  // Carrying the ball in one hand before a serve or spike (right arm), free arm relaxed in front
+  carry: { up: [0.35, -0.55, 0.75], fore: [0.1, 0.6, 0.8] },
+  relaxed: { up: [0.3, -0.75, 0.6], fore: [0.0, -0.2, 1] },
 };
 const nlerp = (a, b, t) => { const v = a.map((x, i) => x + (b[i] - x) * t); const l = Math.hypot(...v) || 1; return v.map((x) => x / l); };
 const armMix = (a, b, t) => ({ up: nlerp(a.up, b.up, t), fore: nlerp(a.fore, b.fore, t) });
@@ -282,9 +291,9 @@ const armMix = (a, b, t) => ({ up: nlerp(a.up, b.up, t), fore: nlerp(a.fore, b.f
 function armTargets(act) {
   if (act.throwKind === 'over') {
     const a = act.a;
-    const R = a < 0.45 ? armMix(ARM.hold, ARM.cocked, smooth(a / 0.45))
+    const R = a < 0.45 ? armMix(ARM.carry, ARM.cocked, smooth(a / 0.45))
       : a < 0.6 ? armMix(ARM.cocked, ARM.reach, smooth((a - 0.45) / 0.15)) : armMix(ARM.reach, ARM.follow, smooth((a - 0.6) / 0.4));
-    const L = a < 0.6 ? armMix(ARM.hold, ARM.guideUp, smooth(a / 0.6)) : armMix(ARM.guideUp, ARM.guideDown, smooth((a - 0.6) / 0.4));
+    const L = a < 0.6 ? armMix(ARM.relaxed, ARM.guideUp, smooth(a / 0.6)) : armMix(ARM.guideUp, ARM.guideDown, smooth((a - 0.6) / 0.4));
     return { L, R, w: 1 };
   }
   if (act.throwKind === 'lob') {
@@ -293,8 +302,11 @@ function armTargets(act) {
     return { L: arm, R: arm, w: 1 };
   }
   if (act.throwKind === 'pass') { const arm = armMix(ARM.hold, ARM.passEnd, smooth(Math.min(1, act.a / 0.7))); return { L: arm, R: arm, w: 1 }; }
+  if (act.blockW > 0.01) return { L: ARM.block, R: ARM.block, w: act.blockW };
   if (act.catchW > 0) { const arm = act.catchHigh ? ARM.high : ARM.mid; return { L: arm, R: arm, w: act.catchW }; }
+  if (act.hold && act.oneHand) return { L: ARM.relaxed, R: ARM.carry, w: 1 };
   if (act.hold) return { L: ARM.hold, R: ARM.hold, w: 1 };
+  if (act.readyW > 0.01) return { L: ARM.ready, R: ARM.ready, w: act.readyW };
   return null;
 }
 
@@ -354,6 +366,7 @@ function updateRig(p, act, dt) {
   const run = smooth(Math.min(1, Math.max(0, (s - 0.5) / 1.5)));
   const sprint = smooth(Math.min(1, Math.max(0, (s - 4) / 1.5)));
   const air = act.jumpH > 0.05 ? 1 : 0;
+  act.readyW = (1 - run) * (1 - air);   // arms up while standing, natural swing while running
   const target = {
     Idle_Loop: (1 - run) * 0.7 * (1 - air), Crouch_Idle_Loop: (1 - run) * 0.3 * (1 - air),
     Jog_Fwd_Loop: run * (1 - sprint) * (1 - air), Sprint_Loop: run * sprint * (1 - air), Jump_Loop: air,
@@ -370,7 +383,7 @@ function updateRig(p, act, dt) {
 
   // Arms on top of the animation
   const tgt = armTargets(act);
-  r.armW = approach(r.armW, tgt ? tgt.w : 0, act.throwKind ? 60 : 12, dt);
+  r.armW = approach(r.armW, tgt ? tgt.w : 0, act.throwKind || act.blockW ? 40 : 12, dt);
   if (r.armW < 0.01 || !tgt) return;
   const B = r.bones;
   for (const [side, arm, up, low, hand] of [[1, tgt.L, B.upperarm_l, B.lowerarm_l, B.hand_l], [-1, tgt.R, B.upperarm_r, B.lowerarm_r, B.hand_r]]) {
@@ -507,6 +520,27 @@ export function create(container) {
     const u = f ? (tk ? Math.max(0, (f.t - wind) / (1 - wind)) : f.t) : 0;   // ball's own progress after release
     if (!f || frame.step !== (release && release.step)) release = null;
 
+    // Block: when an attack goes over the net (not a serve), opponents at the net jump with their arms up.
+    // Up to three front-row players closest to where the ball crosses; the jump peaks just after the release.
+    const blockers = new Map();   // key -> jump height 0..1
+    if (f && tk && tk.kind === 'over' && f.from.holder) {
+      const from = toWorld(frame.pos[f.from.holder]);
+      const to = f.to.holder ? toWorld(frame.pos[f.to.holder]) : toWorld(f.to.point);
+      if (Math.abs(from.x) <= 9 && Math.sign(from.x) !== Math.sign(to.x)) {
+        const tc = from.x / (from.x - to.x), zc = from.z + (to.z - from.z) * tc;
+        const defenders = KEYS.filter((k) => k[0] !== f.from.holder[0] && k !== f.to.holder)
+          .map((k) => ({ k, w: toWorld(frame.pos[k]) }))
+          .filter((d) => Math.abs(d.w.x) < 2.2 && Math.abs(d.w.z - zc) < 3)
+          .sort((a, b) => Math.abs(a.w.z - zc) - Math.abs(b.w.z - zc)).slice(0, 3);
+        const t0 = wind - 0.3, t1 = Math.min(1, wind + 0.45);     // take-off … landing (fraction of the step)
+        for (const d of defenders) {
+          const v = (f.t - t0) / (t1 - t0);
+          blockers.set(d.k, v > 0 && v < 1 ? Math.sin(Math.PI * v) : 0);
+          blockers.set(d.k + ':arms', v > -0.4 && v < 1.25 ? 1 : 0);
+        }
+      }
+    }
+
     for (const k of KEYS) {
       const p = players[k];
       const w = toWorld(frame.pos[k]);
@@ -519,13 +553,16 @@ export function create(container) {
       // Facing: thrower faces the target, others face where they run or the ball
       let target = p.yaw;
       if (f && f.from.holder === k && u === 0) target = angleTo(w, f.to.holder ? toWorld(frame.pos[f.to.holder]) : toWorld(f.to.point));
+      else if (blockers.has(k)) target = angleTo(w, toWorld(frame.pos[f.from.holder]));
       else if (p.speed > 0.6) target = Math.atan2(vel.x, vel.z);
       else target = angleTo(w, ball.position);
       p.yaw += wrap(target - p.yaw) * Math.min(1, dt * 7);
       p.group.rotation.y = p.yaw;
 
       // What this player is doing right now
-      const act = { hold: frame.holder === k, throwKind: null, a: 0, jumpH: 0, catchW: 0, catchHigh: false };
+      const act = { hold: frame.holder === k, throwKind: null, a: 0, jumpH: 0, catchW: 0, catchHigh: false, blockW: 0 };
+      if (blockers.has(k)) { act.jumpH = blockers.get(k) * 1.15; act.blockW = blockers.get(k + ':arms'); }
+      if (act.hold && frame.next && frame.next.from.holder === k) { const nk = throwKind(frame.next); act.oneHand = !!nk && nk.kind === 'over'; }
       if (f && f.from.holder === k) {
         act.throwKind = tk.kind;
         act.a = f.t < wind ? 0.6 * (f.t / Math.max(0.01, wind)) : Math.min(1, 0.6 + 0.4 * (f.t - wind) / 0.15);
@@ -544,7 +581,8 @@ export function create(container) {
       let q = mix(readyPose(now / 1000 + p.phase * 0.1), runPose(p.phase, Math.max(0.35, k1)), smooth(Math.min(1, p.speed / 1.2)));
 
       // Actions on top
-      if (frame.holder === k) q = holdPose(q);
+      if (frame.holder === k) q = act.oneHand ? overhandThrow(q, 0.05) : holdPose(q);
+      if (act.blockW > 0) { q = blockPose(q); if (act.jumpH > 0) q = jumpLegs(q, act.jumpH); }
       if (f && f.from.holder === k) {
         // Pose progress: 0 → 0.6 during the wind-up (0.6 = arm at the top, ball leaves the hand), 0.6 → 1 follow-through
         const a = f.t < wind ? 0.6 * (f.t / Math.max(0.01, wind)) : Math.min(1, 0.6 + 0.4 * (f.t - wind) / 0.15);
@@ -599,7 +637,9 @@ export function create(container) {
       }
       ring.visible = false;
     } else if (frame.holder) {
-      ballPos = handsMid(players[frame.holder]);
+      const hp = players[frame.holder];
+      const nk = frame.next && frame.next.from.holder === frame.holder ? throwKind(frame.next) : null;
+      ballPos = nk && nk.kind === 'over' ? rightHand(hp) : handsMid(hp);
       ring.visible = false;
     } else if (frame.rest) {
       ballPos = toWorld(frame.rest).setY(BALL_R);
