@@ -156,3 +156,13 @@
   .tnode{align-items:flex-start}
   .tnode .tw,.tnode .ic,.tnode input[type=checkbox],.tnode .ct,.tnode .loc,.tnode .ta{margin-top:1px}
   .tnode .nm{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+
+  /* ---------- 3D view ---------- */
+  .stage3d{position:relative;width:100%;aspect-ratio:16/9;border-radius:8px;overflow:hidden;background:#18212c;touch-action:none}
+  .stage3d canvas{display:block;width:100% !important;height:100% !important}
+  .stage3d:fullscreen{aspect-ratio:auto;border-radius:0}
+  .hud3d{position:absolute;left:0;right:0;top:8px;display:flex;justify-content:space-between;padding:0 12px;pointer-events:none;font-size:12px;font-weight:700;letter-spacing:.05em}
+  .hud3d .b{color:#7fb0ff}.hud3d .r{color:#ff8a80}
+  .load3d{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#cfd8e3;font-size:14px}
+  .load3d.hide{display:none}
+  #btn3d.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}

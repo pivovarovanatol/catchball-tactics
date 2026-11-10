@@ -2,8 +2,8 @@
 import {
   KEYS, clone, clamp, dist, startZones, lineup, buildSnaps, ballPos, sameBall,
   autoTiming, stepArrows, describeStep, render,
-} from './core.js?v=202611092010';
-import * as store from './store.js?v=202611092010';
+} from './core.js?v=202611101100';
+import * as store from './store.js?v=202611101100';
 
 const $ = (id) => document.getElementById(id);
 const svg = $('court');
@@ -19,11 +19,14 @@ let view = null;              // play being watched
 let edit = null;              // editor state
 let currentId = null;         // play shown on the board (view or edit)
 const checked = new Set();    // play ids ticked in the tree (coach mode)
+let v3 = null;                // 3D viewer (loaded on first use)
+let use3d = false;            // the viewer's 2D/3D choice (remembered, read below)
 
 const showZones = () => $('showZones').checked;
 const say = (elm, text, cls) => { elm.textContent = text || ''; elm.className = 'msg' + (cls ? ' ' + cls : ''); };
 const lsGet = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } };
+use3d = !!lsGet('cb-3d');
 const byId = (id) => plays.find((p) => p.id === id);
 const norm = store.normFolder;
 const parentOf = (f) => norm(f).split('/').slice(0, -1).join('/');
@@ -83,6 +86,7 @@ function setMode(m) {
   $('playbar').classList.toggle('hide', m !== 'view');
   $('editor').classList.toggle('hide', m !== 'edit');
   svg.classList.toggle('locked', m === 'view');
+  show3d(m === 'view' && use3d);
   const lock = m === 'edit' || (m === 'view' && view && view.returnToEdit);
   document.body.classList.toggle('tree-locked', lock);
   ['btnNew', 'btnEdit', 'btnDup', 'btnMove', 'btnDel'].forEach((id) => { $(id).disabled = lock; });
@@ -115,6 +119,7 @@ function openView(play, returnToEdit) {
   dots.innerHTML = '';
   play.steps.forEach(() => dots.appendChild(document.createElement('span')));
   if (!returnToEdit) setUrlPlay(play.id);
+  if (v3) v3.snapPlayers();
   drawView();
 }
 function closeView() {
@@ -145,6 +150,10 @@ function drawView() {
   for (let k = 0; k <= last && k < n; k++) arrows.push(...stepArrows(snaps[k], snaps[k + 1], play.steps[k].arc, k === last ? 1 : 0.3));
 
   render({ pos, serving: play.serving, holder, ballDraw, arrows, landing, showZones: showZones() });
+  if (v3 && use3d) {
+    const flying = moving && !sameBall(a.ball, b.ball);
+    v3.update({ pos, holder, flight: flying ? { from: a.ball, to: b.ball, t, arc: play.steps[cursor].arc } : null, rest: landing });
+  }
 
   let text, label;
   if (moving) { text = play.steps[cursor].cap; label = `Step ${cursor + 1}/${n}`; }
@@ -759,8 +768,40 @@ $('btnNext').onclick = () => {
   if (view.playing) { stopAnim(); view.t = 0; view.cursor = Math.min(view.cursor + 1, view.play.steps.length); drawView(); }
   else startAnim(true);
 };
-$('btnPrev').onclick = () => { if (!view) return; stopAnim(); if (view.t > 0) view.t = 0; else view.cursor = Math.max(0, view.cursor - 1); drawView(); };
-$('btnReplay').onclick = () => { if (!view) return; stopAnim(); view.cursor = 0; view.t = 0; drawView(); startAnim(false); };
+$('btnPrev').onclick = () => { if (!view) return; stopAnim(); if (view.t > 0) view.t = 0; else view.cursor = Math.max(0, view.cursor - 1); if (v3) v3.snapPlayers(); drawView(); };
+$('btnReplay').onclick = () => { if (!view) return; stopAnim(); view.cursor = 0; view.t = 0; if (v3) v3.snapPlayers(); drawView(); startAnim(false); };
+
+// ---------- 3D ----------
+async function load3d() {
+  if (v3) return v3;
+  $('load3d').classList.remove('hide');
+  try {
+    // Same ?v= as this file, so a new release never mixes old and new code.
+    const mod = await import(new URL('./view3d.js' + new URL(import.meta.url).search, import.meta.url));
+    v3 = mod.create($('stage3d'));
+    v3.setCamera($('cam3d').value);
+  } catch (e) {
+    $('load3d').textContent = `Couldn't load 3D: ${e.message}`;
+    throw e;
+  }
+  $('load3d').classList.add('hide');
+  return v3;
+}
+function show3d(on) {
+  $('stage3d').classList.toggle('hide', !on);
+  svg.classList.toggle('hide', on);
+  $('cam3d').classList.toggle('hide', !on);
+  $('btnFull').classList.toggle('hide', !on);
+  $('btn3d').classList.toggle('on', on);
+  $('btn3d').textContent = on ? '▦ 2D' : '🧊 3D';
+  $('btn3d').title = on ? 'Back to the 2D board' : 'Watch this play in 3D';
+  if (!on) { if (v3) v3.stop(); return; }
+  load3d().then((v) => { v.snapPlayers(); v.start(); if (view) drawView(); }).catch(() => {});
+}
+$('btn3d').onclick = () => { use3d = !use3d; lsSet('cb-3d', use3d); show3d(mode === 'view' && use3d); };
+$('cam3d').onchange = () => { if (v3) v3.setCamera($('cam3d').value); lsSet('cb-cam', $('cam3d').value); };
+$('btnFull').onclick = () => { const st = $('stage3d'); if (document.fullscreenElement) document.exitFullscreen(); else if (st.requestFullscreen) st.requestFullscreen().catch(() => {}); };
+{ const c = lsGet('cb-cam'); if (c && [...$('cam3d').options].some((o) => o.value === c)) $('cam3d').value = c; }
 $('btnShare').onclick = sharePlay;
 $('btnCloseView').onclick = closeView;
 

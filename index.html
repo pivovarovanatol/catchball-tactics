@@ -5,7 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Catchball Tactics Board</title>
 <meta name="description" content="Animated catchball set plays: watch, step through and share.">
-<link rel="stylesheet" href="css/style.css?v=202611092010">
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<link rel="stylesheet" href="css/style.css?v=202611101100">
 </head>
 <body>
 <div class="wrap">
@@ -112,6 +118,10 @@
         <g id="ballLayer" pointer-events="none"></g>
         <g id="fx" pointer-events="none"></g>
       </svg>
+      <div class="stage3d hide" id="stage3d">
+        <div class="hud3d"><span class="b">◀ BLUE</span><span class="r">RED ▶</span></div>
+        <div class="load3d" id="load3d">Loading 3D…</div>
+      </div>
 
       <!-- Free board -->
       <div class="under" id="freeBar">
@@ -141,6 +151,21 @@
             <option value="1" selected>1×</option>
             <option value="1.5">1.5×</option>
           </select>
+          <button id="btn3d" title="Watch this play in 3D">🧊 3D</button>
+          <select id="cam3d" class="hide" title="Camera">
+            <option value="tv">📺 TV view</option>
+            <option value="corner">📐 Corner</option>
+            <option value="blue">🔵 Behind Blue</option>
+            <option value="red">🔴 Behind Red</option>
+            <option value="top">⬇ From above</option>
+            <optgroup label="Through a player's eyes">
+              <option value="p:A1">Blue 1</option><option value="p:A2">Blue 2</option><option value="p:A3">Blue 3</option>
+              <option value="p:A4">Blue 4</option><option value="p:A5">Blue 5</option><option value="p:A6">Blue 6</option>
+              <option value="p:B1">Red 1</option><option value="p:B2">Red 2</option><option value="p:B3">Red 3</option>
+              <option value="p:B4">Red 4</option><option value="p:B5">Red 5</option><option value="p:B6">Red 6</option>
+            </optgroup>
+          </select>
+          <button id="btnFull" class="hide" title="Full screen">⛶</button>
           <button id="btnShare" title="Copy a link to this play">🔗 Share</button>
           <button id="btnCloseView">✕ Close</button>
           <div class="dots" id="dots"></div>
@@ -213,6 +238,6 @@
   </div>
 </dialog>
 
-<script type="module" src="js/app.js?v=202611092010"></script>
+<script type="module" src="js/app.js?v=202611101100"></script>
 </body>
 </html>

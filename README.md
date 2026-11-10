@@ -9,6 +9,9 @@ Coaches record set plays step by step. Players open a link and watch the play an
 
 - **Browse plays** in the sidebar: a folder tree with search. Click a play to open it.
 - **Watch plays.** Press ▶ Play, or use ⏮ ⏭ to go one step at a time. Blue arrows show where players run, the dashed line shows the ball.
+- **Watch in 3D.** Press **🧊 3D** under any play: the same play on a 3D court, with players running, catching and
+  throwing and the ball flying in real arcs. Pick a camera (TV, corner, behind either team, from above, or through any
+  player's eyes), drag to rotate, scroll/pinch to zoom, ⛶ for full screen. **▦ 2D** switches back. Your choice is remembered.
 - **Share a play.** The 🔗 next to a play (or 🔗 Share under the court) copies a direct link such as
   `…/catchball-tactics/?play=switch-3-and-4-attack-by-3`. The link opens straight into that play.
 - **Free board** (📌 at the top of the list). Drag players around, choose the serving team, and rotate either team.
@@ -34,6 +37,7 @@ catchball-tactics/
 ├── js/
 │   ├── core.js             # court geometry, play model helpers, drawing
 │   ├── store.js            # loading plays, local drafts, GitHub publishing
+│   ├── view3d.js           # 3D replay (Three.js, loaded only when 3D is opened)
 │   └── app.js              # UI: list, playback, free board, editor, settings
 ├── plays/
 │   ├── index.json          # folders + list of plays and the folder each one is in
