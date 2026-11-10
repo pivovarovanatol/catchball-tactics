@@ -6,6 +6,8 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 const U = 30;
 const NET_H = 2.24;            // catchball net height (women's / mixed)
@@ -253,6 +255,133 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const approach = (cur, target, rate, dt) => cur + (target - cur) * Math.min(1, rate * dt);
 const smooth = (t) => t * t * (3 - 2 * t);
 
+// ---------- Mannequin players ----------
+// Character and motion-captured animations: Quaternius "Universal Animation Library" (CC0), assets/player.glb.
+// Legs and body come from the clips (idle, jog, sprint, jump); the arms are aimed in code for holding,
+// passing, throwing, spiking and catching, because the library has no ball-handling animations.
+
+// Arm directions in the player's own space (+Z forward, +X = the player's left, +Y up), for the LEFT arm.
+// The right arm mirrors X. `up` = upper arm (shoulder → elbow), `fore` = forearm (elbow → wrist).
+const ARM = {
+  hold: { up: [0.25, -0.75, 0.6], fore: [-0.45, 0.15, 0.88] },
+  high: { up: [0.3, 0.9, 0.3], fore: [0.15, 0.95, 0.25] },
+  mid: { up: [0.2, -0.25, 0.95], fore: [-0.15, 0.15, 1] },
+  passEnd: { up: [0.12, -0.05, 1], fore: [0, 0, 1] },
+  lobLow: { up: [0.15, -0.95, 0.3], fore: [-0.25, -0.6, 0.75] },
+  lobUp: { up: [0.15, 0.97, 0.25], fore: [0.05, 1, 0.15] },
+  cocked: { up: [0.5, 0.8, -0.15], fore: [0.1, 0.6, -0.8] },
+  reach: { up: [0.1, 0.97, 0.2], fore: [0.05, 0.97, 0.25] },
+  follow: { up: [0.1, -0.5, 0.85], fore: [0, -0.8, 0.6] },
+  guideUp: { up: [0.2, 0.8, 0.55], fore: [0.1, 0.9, 0.4] },
+  guideDown: { up: [0.2, -0.8, 0.5], fore: [0.05, -0.6, 0.8] },
+};
+const nlerp = (a, b, t) => { const v = a.map((x, i) => x + (b[i] - x) * t); const l = Math.hypot(...v) || 1; return v.map((x) => x / l); };
+const armMix = (a, b, t) => ({ up: nlerp(a.up, b.up, t), fore: nlerp(a.fore, b.fore, t) });
+
+/** Which way each arm should point for an action ({ hold, throwKind, a, catchHigh, catchW }). */
+function armTargets(act) {
+  if (act.throwKind === 'over') {
+    const a = act.a;
+    const R = a < 0.45 ? armMix(ARM.hold, ARM.cocked, smooth(a / 0.45))
+      : a < 0.6 ? armMix(ARM.cocked, ARM.reach, smooth((a - 0.45) / 0.15)) : armMix(ARM.reach, ARM.follow, smooth((a - 0.6) / 0.4));
+    const L = a < 0.6 ? armMix(ARM.hold, ARM.guideUp, smooth(a / 0.6)) : armMix(ARM.guideUp, ARM.guideDown, smooth((a - 0.6) / 0.4));
+    return { L, R, w: 1 };
+  }
+  if (act.throwKind === 'lob') {
+    const a = act.a;
+    const arm = a < 0.2 ? armMix(ARM.hold, ARM.lobLow, smooth(a / 0.2)) : armMix(ARM.lobLow, ARM.lobUp, smooth(Math.min(1, (a - 0.2) / 0.55)));
+    return { L: arm, R: arm, w: 1 };
+  }
+  if (act.throwKind === 'pass') { const arm = armMix(ARM.hold, ARM.passEnd, smooth(Math.min(1, act.a / 0.7))); return { L: arm, R: arm, w: 1 }; }
+  if (act.catchW > 0) { const arm = act.catchHigh ? ARM.high : ARM.mid; return { L: arm, R: arm, w: act.catchW }; }
+  if (act.hold) return { L: ARM.hold, R: ARM.hold, w: 1 };
+  return null;
+}
+
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _d = new THREE.Vector3();
+const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
+/** Rotate `bone` so that the direction bone → child points along `dirWorld`, blended by w. */
+function aimBone(bone, child, dirWorld, w) {
+  bone.getWorldPosition(_a); child.getWorldPosition(_b);
+  const cur = _b.sub(_a).normalize();
+  _q1.setFromUnitVectors(cur, dirWorld);
+  bone.getWorldQuaternion(_q2);
+  const targetWorld = _q1.multiply(_q2);
+  bone.parent.getWorldQuaternion(_q3);
+  const local = _q3.invert().multiply(targetWorld);
+  bone.quaternion.slerp(local, w);
+  bone.updateMatrixWorld(true);
+}
+
+const RIG_CLIPS = ['Idle_Loop', 'Crouch_Idle_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop', 'Jump_Loop'];
+
+function buildRig(gltf, key, label) {
+  const model = SkeletonUtils.clone(gltf.scene);
+  const team = new THREE.MeshStandardMaterial({ color: TEAM[key[0]], roughness: 0.45, metalness: 0.05 });
+  const joints = new THREE.MeshStandardMaterial({ color: 0x23252b, roughness: 0.6 });
+  const bones = {};
+  model.traverse((o) => {
+    if (o.isBone) bones[o.name] = o;
+    if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; o.material = o.material && /joint/i.test(o.material.name) ? joints : team; }
+  });
+  model.scale.setScalar(0.96);
+  const group = new THREE.Group();
+  const inner = new THREE.Group();
+  inner.add(model);
+  group.add(inner);
+  // Make the model face +Z (its left hand on +X), whatever way it was exported
+  model.updateMatrixWorld(true);
+  if (bones.hand_l && bones.hand_l.getWorldPosition(new THREE.Vector3()).x < 0) model.rotation.y = Math.PI;
+  group.add(label);
+  const mixer = new THREE.AnimationMixer(model);
+  const actions = {};
+  for (const name of RIG_CLIPS) {
+    const clip = gltf.animations.find((c) => c.name === name);
+    if (!clip) continue;
+    const act = mixer.clipAction(clip);
+    act.play();
+    act.setEffectiveWeight(name === 'Idle_Loop' ? 1 : 0);
+    act.time = Math.random() * clip.duration;   // players don't move in sync
+    actions[name] = act;
+  }
+  return { group, inner, model, bones, mixer, actions, weights: {}, armW: 0 };
+}
+
+function updateRig(p, act, dt) {
+  const r = p.rig;
+  // Clip weights: athletic stance (idle + a little crouch) → jog → sprint, or in the air
+  const s = p.speed;
+  const run = smooth(Math.min(1, Math.max(0, (s - 0.5) / 1.5)));
+  const sprint = smooth(Math.min(1, Math.max(0, (s - 4) / 1.5)));
+  const air = act.jumpH > 0.05 ? 1 : 0;
+  const target = {
+    Idle_Loop: (1 - run) * 0.7 * (1 - air), Crouch_Idle_Loop: (1 - run) * 0.3 * (1 - air),
+    Jog_Fwd_Loop: run * (1 - sprint) * (1 - air), Sprint_Loop: run * sprint * (1 - air), Jump_Loop: air,
+  };
+  for (const name in r.actions) {
+    r.weights[name] = approach(r.weights[name] ?? (name === 'Idle_Loop' ? 1 : 0), target[name] || 0, 10, dt);
+    r.actions[name].setEffectiveWeight(r.weights[name]);
+  }
+  if (r.actions.Jog_Fwd_Loop) r.actions.Jog_Fwd_Loop.timeScale = Math.max(0.6, s / 3.2);
+  if (r.actions.Sprint_Loop) r.actions.Sprint_Loop.timeScale = Math.max(0.8, s / 5.5);
+  r.mixer.update(dt);
+  r.inner.position.y = act.jumpH * 0.6;
+  p.group.updateMatrixWorld(true);
+
+  // Arms on top of the animation
+  const tgt = armTargets(act);
+  r.armW = approach(r.armW, tgt ? tgt.w : 0, act.throwKind ? 60 : 12, dt);
+  if (r.armW < 0.01 || !tgt) return;
+  const B = r.bones;
+  for (const [side, arm, up, low, hand] of [[1, tgt.L, B.upperarm_l, B.lowerarm_l, B.hand_l], [-1, tgt.R, B.upperarm_r, B.lowerarm_r, B.hand_r]]) {
+    if (!arm || !up || !low || !hand) continue;
+    _d.set(arm.up[0] * side, arm.up[1], arm.up[2]).applyQuaternion(p.group.quaternion).normalize();
+    aimBone(up, low, _d.clone(), r.armW);
+    _d.set(arm.fore[0] * side, arm.fore[1], arm.fore[2]).applyQuaternion(p.group.quaternion).normalize();
+    aimBone(low, hand, _d.clone(), r.armW);
+  }
+}
+
 // ---------- Public API ----------
 export function create(container) {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -277,6 +406,20 @@ export function create(container) {
 
   const players = {};
   for (const k of KEYS) { players[k] = buildPlayer(k); scene.add(players[k].group); }
+
+  // Swap in the mannequin players once their model has loaded (the simple figures stay if it fails)
+  const modelUrl = new URL('../assets/player.glb' + new URL(import.meta.url).search, import.meta.url);
+  new GLTFLoader().load(modelUrl.href, (gltf) => {
+    for (const k of KEYS) {
+      const old = players[k];
+      const rig = buildRig(gltf, k, old.label);
+      rig.group.position.copy(old.group.position);
+      scene.remove(old.group);
+      scene.add(rig.group);
+      Object.assign(old, { group: rig.group, rig });
+      old.group.visible = !(camMode === 'p:' + k);
+    }
+  }, undefined, (err) => console.warn('3D players: using simple figures', err));
 
   const ballTex = canvasTexture(256, 128, (g, w, h) => {
     g.fillStyle = '#f2c230'; g.fillRect(0, 0, w, h);
@@ -321,12 +464,18 @@ export function create(container) {
   let frame = null;
   let release = null;            // where the ball left the thrower's hand, per step
 
+  const fwd = (p, d) => new THREE.Vector3(Math.sin(p.yaw) * d, 0, Math.cos(p.yaw) * d);
   const handsMid = (p) => {
     const a = new THREE.Vector3(), b = new THREE.Vector3();
+    if (p.rig) { p.rig.bones.hand_l.getWorldPosition(a); p.rig.bones.hand_r.getWorldPosition(b); return a.add(b).multiplyScalar(0.5).add(fwd(p, 0.1)); }
     p.hands[0].getWorldPosition(a); p.hands[1].getWorldPosition(b);
     return a.add(b).multiplyScalar(0.5);
   };
-  const rightHand = (p) => { const v = new THREE.Vector3(); p.hands[1].getWorldPosition(v); return v; };
+  const rightHand = (p) => {
+    const v = new THREE.Vector3();
+    if (p.rig) { p.rig.bones.hand_r.getWorldPosition(v); return v.add(fwd(p, 0.06)).setY(v.y + 0.06); }
+    p.hands[1].getWorldPosition(v); return v;
+  };
 
   // What kind of throw a flight is, from the shot type and where the thrower is.
   function throwKind(f) {
@@ -374,6 +523,20 @@ export function create(container) {
       else target = angleTo(w, ball.position);
       p.yaw += wrap(target - p.yaw) * Math.min(1, dt * 7);
       p.group.rotation.y = p.yaw;
+
+      // What this player is doing right now
+      const act = { hold: frame.holder === k, throwKind: null, a: 0, jumpH: 0, catchW: 0, catchHigh: false };
+      if (f && f.from.holder === k) {
+        act.throwKind = tk.kind;
+        act.a = f.t < wind ? 0.6 * (f.t / Math.max(0.01, wind)) : Math.min(1, 0.6 + 0.4 * (f.t - wind) / 0.15);
+        if (tk.jump) act.jumpH = Math.max(0, Math.sin(Math.PI * Math.min(1, f.t / (2 * wind)))) * (f.shot === 'spike' ? 1.3 + (tk.extra || 0) / 0.6 : 1);
+      }
+      if (f && f.to.holder === k && u > 0.35) {
+        const end = toWorld(frame.pos[k]);
+        act.catchHigh = (f.shot === 'rainbow') || (tk && tk.kind !== 'pass' && Math.abs(end.x) < 9);
+        act.catchW = smooth(Math.min(1, (u - 0.35) / 0.4));
+      }
+      if (p.rig) { updateRig(p, act, dt); continue; }
 
       // Base: ready stance blended into running
       p.phase += dt * (3 + p.speed * 2.4);
@@ -454,7 +617,7 @@ export function create(container) {
   function updateCamera(dt) {
     if (camMode.startsWith('p:')) {
       const p = players[camMode.slice(2)];
-      const eye = new THREE.Vector3(); p.head.getWorldPosition(eye); eye.y += 0.03;
+      const eye = new THREE.Vector3(); (p.rig ? p.rig.bones.Head : p.head).getWorldPosition(eye); eye.y += p.rig ? 0.1 : 0.03;
       const look = ball.position.clone();
       if (look.distanceTo(eye) < 1.2) look.set(0, 1.4, eye.z * 0.5); // ball in own hands: look at the net
       // Turn the head smoothly instead of snapping to the ball

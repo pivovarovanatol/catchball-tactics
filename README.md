@@ -9,7 +9,8 @@ Coaches record set plays step by step. Players open a link and watch the play an
 
 - **Browse plays** in the sidebar: a folder tree with search. Click a play to open it.
 - **Watch plays.** Press ▶ Play, or use ⏮ ⏭ to go one step at a time. Blue arrows show where players run, the dashed line shows the ball.
-- **Watch in 3D.** Press **🧊 3D** under any play: the same play on a 3D court. Players stand in a ready stance, run,
+- **Watch in 3D.** Press **🧊 3D** under any play: the same play on a 3D court with motion-captured mannequin players
+  (Quaternius, CC0). Players stand in a ready stance, run,
   pass from the chest, throw overhand, jump to spike at the net, lob rainbows, and catch at chest or over their heads;
   the ball follows the shot type. Pick a camera (TV, corner, behind either team, from above, or through any
   player's eyes), drag to rotate, scroll/pinch to zoom, ⛶ for full screen. **▦ 2D** switches back. Your choice is remembered.
@@ -42,6 +43,7 @@ catchball-tactics/
 │   ├── core.js             # court geometry, play model helpers, drawing
 │   ├── store.js            # loading plays, local drafts, GitHub publishing
 │   ├── view3d.js           # 3D replay (Three.js, loaded only when 3D is opened)
+├── assets/player.glb       # 3D player model + animations (Quaternius, CC0; see assets/CREDITS.md)
 │   └── app.js              # UI: list, playback, free board, editor, settings
 ├── plays/
 │   ├── index.json          # folders + list of plays and the folder each one is in
