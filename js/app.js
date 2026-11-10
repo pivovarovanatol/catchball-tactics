@@ -2,8 +2,8 @@
 import {
   KEYS, clone, clamp, dist, startZones, lineup, buildSnaps, ballPos, sameBall,
   autoTiming, stepArrows, describeStep, render,
-} from './core.js';
-import * as store from './store.js';
+} from './core.js?v=202611092010';
+import * as store from './store.js?v=202611092010';
 
 const $ = (id) => document.getElementById(id);
 const svg = $('court');

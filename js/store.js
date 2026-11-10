@@ -116,6 +116,7 @@ async function gh(path, opts = {}) {
   const s = getSettings();
   const r = await fetch(`https://api.github.com/repos/${s.owner}/${s.repo}${path}`, {
     ...opts,
+    cache: 'no-store', // GitHub lets browsers cache API reads for 60 s; a stale file version makes the next save fail
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${s.token}`,
@@ -135,7 +136,8 @@ async function gh(path, opts = {}) {
 
 async function getFile(path) {
   try {
-    return await gh(`/contents/${path}?ref=${encodeURIComponent(getSettings().branch)}`);
+    // A unique URL per read: browsers may cache GitHub API reads for 60 s, and a stale file version makes the save fail.
+    return await gh(`/contents/${path}?ref=${encodeURIComponent(getSettings().branch)}&t=${Date.now()}${Math.random().toString(36).slice(2, 6)}`);
   } catch (e) {
     if (e.status === 404) return null;
     throw e;
@@ -143,10 +145,18 @@ async function getFile(path) {
 }
 
 async function putFile(path, text, message, sha) {
-  return gh(`/contents/${path}`, {
+  const put = (s) => gh(`/contents/${path}`, {
     method: 'PUT',
-    body: JSON.stringify({ message, content: b64(text), branch: getSettings().branch, ...(sha ? { sha } : {}) }),
+    body: JSON.stringify({ message, content: b64(text), branch: getSettings().branch, ...(s ? { sha: s } : {}) }),
   });
+  try {
+    return await put(sha);
+  } catch (e) {
+    // The file changed since we read it (another save, another device): re-read its version once and retry.
+    if (e.status !== 409 && e.status !== 422) throw e;
+    const cur = await getFile(path);
+    return put(cur && cur.sha);
+  }
 }
 
 async function updateIndex(mutate, message) {
