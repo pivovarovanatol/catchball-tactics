@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catchball Tactics Board</title>
+<meta name="description" content="Animated catchball set plays: watch, step through and share.">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Catchball Tactics Board</h1>
+      <div class="sub">18 × 9 m court · 6 players a side · zones numbered as in volleyball</div>
+    </div>
+    <div class="right">
+      <span class="badge coach">Coach mode</span>
+      <button id="btnCoach" title="Coach mode lets you create, edit and publish plays">Coach mode</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="board">
+      <!-- 1 m = 30 units. Court x 0–540, y 0–270. Net at x = 270. -->
+      <svg id="court" viewBox="-75 -48 690 366" aria-label="Catchball court">
+        <defs>
+          <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-opacity=".35"/>
+          </filter>
+          <pattern id="mesh" width="6" height="6" patternUnits="userSpaceOnUse">
+            <path d="M0 0 L6 6 M6 0 L0 6" stroke="#fff" stroke-width=".6" opacity=".7"/>
+          </pattern>
+          <marker id="arA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#1f5fbf"/></marker>
+          <marker id="arB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#c8362d"/></marker>
+          <marker id="arBall" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#fff6d0"/></marker>
+        </defs>
+
+        <rect id="floorbg" x="-75" y="-48" width="690" height="366" rx="8" fill="var(--free)"/>
+        <rect x="0" y="0" width="540" height="270" fill="var(--court)"/>
+        <rect x="180" y="0" width="180" height="270" fill="#fff" opacity=".08"/>
+
+        <g id="zones" font-size="34" font-weight="800" fill="#fff" opacity=".22" text-anchor="middle" dominant-baseline="central" pointer-events="none"></g>
+
+        <g fill="none" stroke="var(--courtline)" stroke-width="2.6" pointer-events="none">
+          <rect x="0" y="0" width="540" height="270"/>
+          <line x1="180" y1="0" x2="180" y2="270"/>
+          <line x1="360" y1="0" x2="360" y2="270"/>
+          <line x1="180" y1="-30" x2="180" y2="-4" stroke-dasharray="5 5"/>
+          <line x1="180" y1="274" x2="180" y2="300" stroke-dasharray="5 5"/>
+          <line x1="360" y1="-30" x2="360" y2="-4" stroke-dasharray="5 5"/>
+          <line x1="360" y1="274" x2="360" y2="300" stroke-dasharray="5 5"/>
+          <line x1="270" y1="0" x2="270" y2="270"/>
+        </g>
+
+        <g pointer-events="none">
+          <rect x="266" y="-24" width="8" height="318" fill="url(#mesh)" />
+          <line x1="270" y1="-24" x2="270" y2="294" stroke="#1d1d1f" stroke-width="2"/>
+          <circle cx="270" cy="-30" r="6" fill="#ddd" stroke="#555" stroke-width="1.5"/>
+          <circle cx="270" cy="300" r="6" fill="#ddd" stroke="#555" stroke-width="1.5"/>
+          <line x1="270" y1="-6" x2="270" y2="6" stroke="#e33" stroke-width="5"/>
+          <line x1="270" y1="264" x2="270" y2="276" stroke="#e33" stroke-width="5"/>
+        </g>
+
+        <g font-size="11" fill="#fff" opacity=".85" text-anchor="middle" font-weight="600" pointer-events="none">
+          <text x="90" y="-34">Back row</text>
+          <text x="215" y="-34">Front row</text>
+          <text x="325" y="-34">Front row</text>
+          <text x="450" y="-34">Back row</text>
+          <text x="270" y="-38" font-size="10">NET</text>
+        </g>
+        <g id="teamNames" font-size="12" font-weight="700" text-anchor="middle" pointer-events="none"></g>
+
+        <g id="arrows" pointer-events="none"></g>
+        <g id="players"></g>
+        <g id="ballLayer" pointer-events="none"></g>
+        <g id="fx" pointer-events="none"></g>
+      </svg>
+
+      <!-- Free board -->
+      <div class="under" id="freeBar">
+        <p class="hint" style="font-size:13px">Free board: drag players around, tap a player to give them the ball.
+          <span class="coach-only">To record a play, set up the starting positions here, then press <b>“+ New”</b> on the right.</span></p>
+      </div>
+
+      <!-- Playback -->
+      <div class="under hide" id="playbar">
+        <div class="caption"><span class="stepno" id="stepno"></span><span class="captext" id="captext"></span></div>
+        <div class="controls">
+          <button id="btnPrev" title="Step back">⏮</button>
+          <button id="btnPlay" class="primary" style="min-width:110px">▶ Play</button>
+          <button id="btnNext" title="Step forward">⏭</button>
+          <button id="btnReplay" title="From the start">⟲</button>
+          <select id="speed" title="Speed">
+            <option value="0.5">0.5×</option>
+            <option value="0.75">0.75×</option>
+            <option value="1" selected>1×</option>
+            <option value="1.5">1.5×</option>
+          </select>
+          <button id="btnShare" title="Copy a link to this play">🔗 Share</button>
+          <button id="btnCloseView">✕ Close</button>
+          <div class="dots" id="dots"></div>
+        </div>
+        <div class="msg" id="shareMsg"></div>
+        <div class="key">
+          <span><svg width="34" height="10"><line x1="2" y1="5" x2="28" y2="5" stroke="#1f5fbf" stroke-width="2.5"/><path d="M26 1 L33 5 L26 9z" fill="#1f5fbf"/></svg>player movement</span>
+          <span><svg width="34" height="10"><line x1="2" y1="5" x2="28" y2="5" stroke="#8a6d00" stroke-width="2.5" stroke-dasharray="4 3"/><path d="M26 1 L33 5 L26 9z" fill="#8a6d00"/></svg>ball flight</span>
+        </div>
+      </div>
+
+      <!-- Editor (coach mode) -->
+      <div class="under hide" id="editor">
+        <div class="edtitle"><b>Editor</b><input type="text" id="edName" placeholder="Play name"></div>
+        <div class="edhint" id="edHint"></div>
+        <div class="row">
+          <input type="text" id="edCap" placeholder="Step caption: what happens (optional)">
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button id="edAdd" class="primary">+ Add step</button>
+          <button id="edUndo">Undo changes</button>
+        </div>
+        <ol class="steps" id="edSteps"></ol>
+        <div class="row" style="margin-top:12px">
+          <button id="edTest">▶ Preview</button>
+          <button id="edSave" class="primary">Save</button>
+          <button id="edDownload" title="Download this play as a JSON file">⬇ JSON</button>
+          <button id="edClose">Close</button>
+        </div>
+        <div class="msg" id="edMsg"></div>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <div>
+        <span class="h">Plays</span>
+        <select id="playSel"></select>
+        <div class="row" style="margin-top:8px">
+          <button id="btnOpen" class="primary">▶ Open</button>
+          <button id="btnEdit" class="coach-only">✎ Edit</button>
+        </div>
+        <div class="row coach-only" style="margin-top:8px">
+          <button id="btnNew">+ New</button>
+          <button id="btnDup" title="Duplicate this play">⧉ Copy</button>
+          <button id="btnDel" class="danger">Delete</button>
+        </div>
+        <div class="msg" id="listMsg"></div>
+      </div>
+      <fieldset id="freeCtl">
+        <div>
+          <span class="h">Serving team</span>
+          <div class="row">
+            <button id="serveA">Blue</button>
+            <button id="serveB">Red</button>
+          </div>
+        </div>
+        <div>
+          <span class="h">Rotate (clockwise)</span>
+          <div class="row">
+            <button id="rotA">Blue ↻</button>
+            <button id="rotB">Red ↻</button>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="receive" checked> Receiving team in serve-receive shape</label>
+        <button id="reset">Reset to starting lineup</button>
+      </fieldset>
+      <label class="check"><input type="checkbox" id="showZones" checked> Zone numbers on floor</label>
+      <div class="hint">
+        Each player is numbered by the zone they start in, and keeps that number when the team rotates.
+        Zones: front row 4 · 3 · 2, back row 5 · 6 · 1. Whoever is in zone 1 serves.
+      </div>
+      <div class="coach-only">
+        <span class="h">Publishing</span>
+        <div class="status" id="pubStatus"></div>
+        <button id="btnSettings" style="margin-top:8px">⚙ GitHub settings</button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<dialog id="settings">
+  <h2>Publish plays to GitHub</h2>
+  <p>Plays you save are committed to <code>plays/</code> in your repo. You need a GitHub token that can write to this one repo. It stays in this browser only.</p>
+  <p><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Create a fine-grained token</a>:
+     <b>Repository access</b> → only this repo, <b>Permissions</b> → Contents: Read and write.</p>
+  <label for="setOwner">Owner</label><input type="text" id="setOwner" placeholder="pivovarovanatol">
+  <label for="setRepo">Repository</label><input type="text" id="setRepo" placeholder="catchball-tactics">
+  <label for="setBranch">Branch</label><input type="text" id="setBranch" placeholder="main">
+  <label for="setToken">Token</label><input type="password" id="setToken" placeholder="github_pat_…" autocomplete="off">
+  <div class="msg" id="setMsg"></div>
+  <div class="row">
+    <button id="setTest">Test</button>
+    <button id="setSave" class="primary">Save</button>
+    <button id="setForget" class="danger">Forget token</button>
+    <button id="setClose">Close</button>
+  </div>
+</dialog>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
