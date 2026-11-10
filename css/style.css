@@ -88,3 +88,71 @@
   dialog .row{margin-top:14px}
   dialog p{font-size:13px;line-height:1.45;margin:6px 0}
   dialog a{color:var(--accent)}
+
+  /* ---------- Sidebar layout ---------- */
+  .wrap{max-width:1360px}
+  header .titlebox{display:flex;align-items:center;gap:10px}
+  .navtoggle{display:none;width:auto;font-size:18px;padding:4px 10px}
+  .app{display:grid;grid-template-columns:290px 1fr;gap:16px;align-items:start}
+  .side{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px;
+        position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+  .side input[type=search]{font:inherit;font-size:14px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px;width:100%}
+  .sidetools{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:10px}
+  .sidetools .row button{padding:6px 4px;font-size:13px}
+  .selinfo{font-size:12px;color:var(--muted);min-height:16px}
+  .selinfo a{color:var(--accent);cursor:pointer;text-decoration:underline}
+  .sideopts{border-top:1px solid var(--line);padding-top:8px}
+  .sideopts .hint{margin-top:4px}
+  @media (max-width:900px){
+    .app{grid-template-columns:1fr}
+    .navtoggle{display:inline-block}
+    .side{position:static;max-height:none}
+    body.nav-closed .side{display:none}
+  }
+
+  /* ---------- Tree ---------- */
+  .tree{display:flex;flex-direction:column;gap:1px;font-size:14px;min-height:40px}
+  .tnode{display:flex;align-items:center;gap:6px;padding:5px 6px;border-radius:7px;cursor:pointer;user-select:none;line-height:1.25}
+  .tnode:hover{background:var(--bg)}
+  .tnode.current{background:color-mix(in srgb, var(--accent) 16%, transparent);font-weight:600}
+  .tnode .tw{width:14px;flex:none;color:var(--muted);font-size:11px;text-align:center;transition:transform .12s}
+  .tnode.open > .tw{transform:rotate(90deg)}
+  .tnode .ic{flex:none;width:18px;text-align:center}
+  .tnode .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tnode .ct{flex:none;font-size:11px;color:var(--muted);background:var(--bg);border-radius:999px;padding:1px 7px}
+  .tnode .loc{flex:none;font-size:10px;color:var(--danger);border:1px solid currentColor;border-radius:999px;padding:0 5px}
+  .tnode input[type=checkbox]{flex:none;margin:0;width:15px;height:15px;cursor:pointer}
+  body:not(.coach) .tnode input[type=checkbox]{display:none}
+  .tnode.folder .nm{font-weight:600}
+  .tkids{display:flex;flex-direction:column;gap:1px;margin-left:14px;border-left:1px solid var(--line);padding-left:4px}
+  .tkids.closed{display:none}
+  .tnode.pinned{color:var(--accent);font-weight:600}
+  .tsep{height:1px;background:var(--line);margin:4px 0}
+  .tempty{font-size:13px;color:var(--muted);padding:6px}
+  mark{background:color-mix(in srgb, var(--ball) 55%, transparent);color:inherit;border-radius:2px}
+
+  /* ---------- Free board controls under the court ---------- */
+  .freectl{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center}
+  .freectl .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+  .freectl .seg{display:flex}
+  .freectl .seg button{width:auto;border-radius:0;padding:5px 10px;font-size:13px}
+  .freectl .seg button:first-child{border-radius:8px 0 0 8px}
+  .freectl .seg button:last-child{border-radius:0 8px 8px 0;border-left:0}
+  .freectl .check{margin:0;font-size:13px}
+  .freectl button.ghost{width:auto;padding:5px 10px;font-size:13px}
+  .edtitle input{min-width:0}
+  #edFolder{max-width:220px}
+  .tnode .ta{display:none;width:auto;flex:none;padding:1px 6px;font-size:12px;line-height:1.3;border-radius:6px;background:transparent}
+  .tnode:hover .ta, .tnode.current .ta{display:inline-block}
+  @media (hover:none){ .tnode .ta{display:inline-block} }
+  .tnode.dropok{outline:2px dashed var(--accent);outline-offset:-2px;background:color-mix(in srgb, var(--accent) 10%, transparent)}
+  .tnode[draggable=true]{cursor:grab}
+  .tdrop{display:none;justify-content:center;color:var(--muted);font-size:12px;border:1px dashed var(--line);margin-top:6px;padding:8px}
+  body.dragging .tdrop{display:flex}
+  body.tree-locked .tree{pointer-events:none;opacity:.55}
+  body.tree-locked .tree::before{content:'Close the editor to switch plays';font-size:12px;color:var(--muted);padding:4px 6px}
+  .app{grid-template-columns:320px 1fr}
+  @media (max-width:900px){ .app{grid-template-columns:1fr} }
+  .tnode{align-items:flex-start}
+  .tnode .tw,.tnode .ic,.tnode input[type=checkbox],.tnode .ct,.tnode .loc,.tnode .ta{margin-top:1px}
+  .tnode .nm{white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}

@@ -7,18 +7,24 @@ Coaches record set plays step by step. Players open a link and watch the play an
 
 ## What it does
 
-- **Watch plays.** Pick a play and press ▶ Play, or use ⏮ ⏭ to go one step at a time. Blue arrows show where players run, the dashed line shows the ball.
-- **Share a play.** 🔗 Share copies a direct link such as `…/catchball-tactics/?play=switch-3-and-4-attack-by-3`. The link opens straight into that play.
-- **Free board.** Drag players around, choose the serving team, and rotate either team.
+- **Browse plays** in the sidebar: a folder tree with search. Click a play to open it.
+- **Watch plays.** Press ▶ Play, or use ⏮ ⏭ to go one step at a time. Blue arrows show where players run, the dashed line shows the ball.
+- **Share a play.** The 🔗 next to a play (or 🔗 Share under the court) copies a direct link such as
+  `…/catchball-tactics/?play=switch-3-and-4-attack-by-3`. The link opens straight into that play.
+- **Free board** (📌 at the top of the list). Drag players around, choose the serving team, and rotate either team.
 - **Coach mode** (button at the top right): create, edit, copy and delete plays.
-  - **+ New** records a play starting from whatever is on the free board.
+  - **Organize the tree:** **+ Folder** creates a folder; hover a folder for **+** (subfolder), **✎** (rename) and **✕** (delete; its plays move up a level).
+    Drag plays or whole folders onto a folder to move them, or onto *“Drop here to move to the top level”*.
+    Tick checkboxes to select several plays (ticking a folder selects everything in it), then **📁 Move** or **Delete**.
+  - **+ Play** records a play starting from whatever is on the free board. The editor has a *Folder* field too.
   - In each step, drag the players who run, then tap a player to throw them the ball or tap the floor where it lands. Press **+ Add step**.
   - ✎ next to a step changes it later. **0. Starting lineup** changes where the play starts.
   - **Save** publishes the play to this repo (see *Publishing* below).
 
 ## How plays are stored
 
-Every play is one JSON file in [`plays/`](plays/). [`plays/index.json`](plays/index.json) lists them in display order.
+Every play is one JSON file in [`plays/`](plays/). [`plays/index.json`](plays/index.json) holds the navigation: the folder list
+and, for each play, its folder. Moving or renaming folders only changes `index.json` (one commit), never the play files.
 The format is described in [docs/PLAY_FORMAT.md](docs/PLAY_FORMAT.md).
 
 ```
@@ -30,7 +36,7 @@ catchball-tactics/
 │   ├── store.js            # loading plays, local drafts, GitHub publishing
 │   └── app.js              # UI: list, playback, free board, editor, settings
 ├── plays/
-│   ├── index.json          # list of plays (order = order in the menu)
+│   ├── index.json          # folders + list of plays and the folder each one is in
 │   └── <play-id>.json      # one file per play; the id is also the share link
 ├── scripts/build-index.mjs # rebuilds plays/index.json from the files
 └── docs/PLAY_FORMAT.md

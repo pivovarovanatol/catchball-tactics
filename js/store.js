@@ -35,25 +35,37 @@ export const canPublish = () => { const s = getSettings(); return !!(s.owner && 
 
 // ---------- Reading plays from the site ----------
 
-export async function loadRepoPlays() {
+/** Loads plays/index.json and every play in it. Returns { plays, folders }; each play gets .folder from the index. */
+export async function loadRepo() {
   const r = await fetch('plays/index.json', { cache: 'no-cache' });
   if (!r.ok) throw new Error(`plays/index.json: ${r.status}`);
   const idx = await r.json();
   const plays = await Promise.all((idx.plays || []).map(async (e) => {
     try {
       const pr = await fetch(`plays/${e.file}`, { cache: 'no-cache' });
-      return pr.ok ? await pr.json() : null;
+      if (!pr.ok) return null;
+      const p = await pr.json();
+      p.folder = normFolder(e.folder ?? p.folder);
+      return p;
     } catch { return null; }
   }));
-  return plays.filter(Boolean);
+  return { plays: plays.filter(Boolean), folders: (idx.folders || []).map(normFolder).filter(Boolean) };
 }
+
+/** "a/b/c" → ["a", "a/b", "a/b/c"] */
+export const ancestors = (f) => { const parts = normFolder(f).split('/').filter(Boolean); return parts.map((_, i) => parts.slice(0, i + 1).join('/')); };
+const addFolders = (idx, list) => {
+  const set = new Set((idx.folders || []).map(normFolder).filter(Boolean));
+  for (const f of list) for (const a of ancestors(f)) set.add(a);
+  idx.folders = [...set].sort((a, b) => a.localeCompare(b));
+};
 
 // ---------- Local drafts ----------
 
 export const getLocal = () => LS.get('cb-local-plays') || [];
 export function putLocal(play) {
   const list = getLocal().filter((p) => p.id !== play.id);
-  list.push(clean(play));
+  list.push({ ...clean(play), folder: normFolder(play.folder) }); // drafts keep their folder locally
   LS.set('cb-local-plays', list);
 }
 export function removeLocal(id) { LS.set('cb-local-plays', getLocal().filter((p) => p.id !== id)); }
@@ -86,6 +98,9 @@ export function clean(play) {
     })),
   };
 }
+
+/** "  Serve receive / Rotation 1 " → "Serve receive/Rotation 1" */
+export const normFolder = (f) => (f || '').split('/').map((x) => x.trim()).filter(Boolean).join('/');
 
 export function newId(name) {
   const slug = (name || 'play').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'play';
@@ -138,7 +153,9 @@ async function updateIndex(mutate, message) {
   const cur = await getFile('plays/index.json');
   const idx = cur ? JSON.parse(unb64(cur.content)) : { plays: [] };
   idx.plays = idx.plays || [];
+  idx.folders = idx.folders || [];
   mutate(idx);
+  idx.folders = [...new Set(idx.folders.map(normFolder).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   await putFile('plays/index.json', JSON.stringify(idx, null, 2) + '\n', message, cur && cur.sha);
 }
 
@@ -148,28 +165,49 @@ export async function testConnection() {
   return { ok: true, push: !!(r.permissions && r.permissions.push), fullName: r.full_name };
 }
 
-/** Commit plays/<id>.json and add/update its entry in plays/index.json. */
-export async function publishPlay(play) {
-  const data = clean(play);
-  const path = `plays/${data.id}.json`;
-  const cur = await getFile(path);
-  await putFile(path, JSON.stringify(data, null, 2) + '\n', `${cur ? 'Update' : 'Add'} play: ${data.name}`, cur && cur.sha);
+const label = (list) => (list.length === 1 ? list[0].name : `${list.length} plays`);
+
+/** Commit plays/<id>.json for each play, then update plays/index.json once. */
+export async function publishPlays(list) {
+  const datas = list.map(clean);
+  for (const data of datas) {
+    const path = `plays/${data.id}.json`;
+    const cur = await getFile(path);
+    await putFile(path, JSON.stringify(data, null, 2) + '\n', `${cur ? 'Update' : 'Add'} play: ${data.name}`, cur && cur.sha);
+  }
   await updateIndex((idx) => {
-    const entry = { id: data.id, name: data.name, file: `${data.id}.json`, updated: data.updated };
-    const i = idx.plays.findIndex((e) => e.id === data.id);
-    if (i >= 0) idx.plays[i] = entry; else idx.plays.push(entry);
-  }, `Index: ${data.name}`);
+    for (const [i, data] of datas.entries()) {
+      const folder = normFolder(list[i].folder);
+      addFolders(idx, [folder]);
+      const entry = { id: data.id, name: data.name, folder, file: `${data.id}.json`, updated: data.updated };
+      const i = idx.plays.findIndex((e) => e.id === data.id);
+      if (i >= 0) idx.plays[i] = entry; else idx.plays.push(entry);
+    }
+  }, `Index: ${label(datas)}`);
+}
+export const publishPlay = (play) => publishPlays([play]);
+
+/** Delete plays/<id>.json for each play, then update plays/index.json once. */
+export async function unpublishPlays(list) {
+  for (const play of list) {
+    const path = `plays/${play.id}.json`;
+    const cur = await getFile(path);
+    if (cur) {
+      await gh(`/contents/${path}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ message: `Delete play: ${play.name}`, sha: cur.sha, branch: getSettings().branch }),
+      });
+    }
+  }
+  const ids = new Set(list.map((p) => p.id));
+  await updateIndex((idx) => { idx.plays = idx.plays.filter((e) => !ids.has(e.id)); }, `Index: remove ${label(list)}`);
 }
 
-/** Delete plays/<id>.json and its index entry. */
-export async function unpublishPlay(play) {
-  const path = `plays/${play.id}.json`;
-  const cur = await getFile(path);
-  if (cur) {
-    await gh(`/contents/${path}`, {
-      method: 'DELETE',
-      body: JSON.stringify({ message: `Delete play: ${play.name}`, sha: cur.sha, branch: getSettings().branch }),
-    });
-  }
-  await updateIndex((idx) => { idx.plays = idx.plays.filter((e) => e.id !== play.id); }, `Index: remove ${play.name}`);
+/** Save the folder tree: the full folder list and which folder each play is in. One commit to plays/index.json. */
+export async function saveLayout(folders, folderOf, message) {
+  await updateIndex((idx) => {
+    idx.folders = [...folders];
+    for (const e of idx.plays) if (folderOf.has(e.id)) e.folder = normFolder(folderOf.get(e.id));
+    addFolders(idx, idx.plays.map((e) => e.folder || ''));
+  }, message || 'Reorganize plays');
 }

@@ -57,3 +57,20 @@ to `y = 270` across. The net is at `x = 270`, the attack lines at `x = 180` and 
 Positions slightly outside the court are allowed (for example the server behind the end line, `x = -36`).
 
 From Blue's point of view (facing the net, to the right), `y = 0` is on their left. For Red it is on their right.
+
+## plays/index.json
+
+```json
+{
+  "folders": ["Serve receive", "Serve receive/Rotation 1", "Switches"],
+  "plays": [
+    { "id": "switch-3-and-4-attack-by-3", "name": "Switch 3 and 4 attack by 3", "folder": "Switches",
+      "file": "switch-3-and-4-attack-by-3.json", "updated": "2026-11-10T03:00:00Z" }
+  ]
+}
+```
+
+- `folders` lists every folder, including empty ones. `/` separates subfolders.
+- Each play entry's `folder` is where it shows in the tree (`""` = top level). The play file itself doesn't store its folder,
+  so reorganizing never rewrites play files.
+- Within a folder, plays appear in the order they are listed here.
