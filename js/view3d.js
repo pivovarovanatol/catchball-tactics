@@ -204,7 +204,7 @@ const both = (o, sh, el, ab = 0.12) => Object.assign(o, { shL: sh, shR: sh, elL:
 function readyPose(t) {
   const b = Math.sin(t * 2.2) * 0.03;
   return pose({ hipL: -0.45, hipR: -0.4, kneeL: 0.8 + b, kneeR: 0.75 + b, spine: 0.3, neck: -0.25, drop: 0.13 + b * 0.2,
-    shL: -2.2, shR: -2.2, elL: -0.75, elR: -0.75, abL: 0.35, abR: 0.35 });
+    shL: -1.45, shR: -1.45, elL: -1.25, elR: -1.25, abL: 0.3, abR: 0.3 });
 }
 function runPose(ph, k) {
   const s = Math.sin(ph), c = Math.cos(ph);
@@ -265,8 +265,8 @@ const smooth = (t) => t * t * (3 - 2 * t);
 // The right arm mirrors X. `up` = upper arm (shoulder → elbow), `fore` = forearm (elbow → wrist).
 const ARM = {
   hold: { up: [0.25, -0.75, 0.6], fore: [-0.45, 0.15, 0.88] },
-  // Waiting stance: elbows raised to about head height, forearms up, hands a little above the head
-  ready: { up: [0.45, 0.62, 0.64], fore: [-0.12, 0.92, 0.37] },
+  // Waiting stance: elbows in front at chest height, forearms up, hands in front of the face (ready to catch)
+  ready: { up: [0.36, -0.12, 0.92], fore: [-0.28, 0.82, 0.5] },
   // Block: both arms straight up and slightly forward over the net
   block: { up: [0.16, 0.95, 0.27], fore: [0.04, 0.95, 0.32] },
   high: { up: [0.3, 0.9, 0.3], fore: [0.15, 0.95, 0.25] },
@@ -713,5 +713,7 @@ export function create(container) {
     stop() { running = false; cancelAnimationFrame(raf); },
     snapPlayers() { for (const k of KEYS) players[k].last = null; },
     ballPosition() { return ball.position.toArray(); },
+    bodyHeights(k) { const p = players[k]; if (!p.rig) return null; const v = new THREE.Vector3(); const o = {};
+      for (const b of ['hand_l', 'hand_r', 'Head']) { p.rig.bones[b].getWorldPosition(v); o[b] = +v.y.toFixed(2); } return o; },
   };
 }
