@@ -267,8 +267,8 @@ const DEFAULT_KITS = {
 };
 const SKIN_TONES = ['#f1c7a3', '#e0ac85', '#c68b62', '#8d5a3b', '#f5d6bd', '#d29a73'];
 const HAIR = [
-  { color: '#2a1a10', style: 'pony' }, { color: '#0f0f10', style: 'bun' }, { color: '#d9b35c', style: 'pony' },
-  { color: '#3d2213', style: 'pony' }, { color: '#151515', style: 'short' }, { color: '#8a3417', style: 'bun' },
+  { color: '#2a1a10', style: 'pony' }, { color: '#0f0f10', style: 'bun' }, { color: '#d9b35c', style: 'long' },
+  { color: '#3d2213', style: 'pony' }, { color: '#151515', style: 'long' }, { color: '#8a3417', style: 'bun' },
 ];
 // Body parts by bone: 0 head/neck, 1 torso, 2 arm/hand, 3 thigh, 4 calf, 5 foot
 function partOf(bone) {
@@ -280,7 +280,7 @@ function partOf(bone) {
   return 2;
 }
 // Rest-pose heights on the model (metres, before scaling)
-const Y = { jerseyTop: 1.52, jerseyBottom: 0.9, shortsCut: 0.8, ankle: 0.12 };
+const Y = { jerseyTop: 1.52, jerseyBottom: 1.0, shortsCut: 0.8, ankle: 0.12 };
 
 /** Adds an `aPart` attribute (body part per vertex) to each skinned geometry, once. */
 function tagParts(gltf) {
@@ -327,7 +327,6 @@ vec3 jersey(vec3 p) {
     vec2 w = vec2(fract(a * 17.0 * 4.0), fract(p.y * 26.0));
     if (w.x > 0.3 && w.x < 0.62 && w.y > 0.35 && w.y < 0.75 && h1(floor(a * 68.0) + floor(p.y * 26.0) * 7.0) > 0.55 && 1.0 - t > 0.08) c = mix(uNear, uFar, 0.7);
   }
-  if (1.0 - t < 0.06) c = uNear;
   return c;
 }`)
       .replace('vec4 diffuseColor = vec4( diffuse, opacity );', `
@@ -431,9 +430,15 @@ function dressRig(model, bones, key, kits, scale) {
     backHair.scale.set(0.95, 1.05, 1.08);
     attachAt(backHair, head, 0, 1.712, -0.006);
     if (hair.style === 'pony') {
-      const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.034, 0.17, 4, 10), hm);
+      const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.036, 0.24, 4, 10), hm);
       tail.castShadow = true;
-      attachAt(tail, head, 0, 1.64, -0.14, 0, 0.35);
+      attachAt(tail, head, 0, 1.6, -0.15, 0, 0.3);
+    } else if (hair.style === 'long') {
+      // Hair down to the shoulders at the back
+      const fall = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 12), hm);
+      fall.castShadow = true;
+      fall.scale.set(1.0, 1.55, 0.5);
+      attachAt(fall, head, 0, 1.6, -0.1);
     } else if (hair.style === 'bun') {
       const bun = new THREE.Mesh(new THREE.SphereGeometry(0.055, 14, 10), hm);
       bun.castShadow = true;
@@ -533,6 +538,12 @@ function buildRig(gltf, key, label, kits) {
   });
   model.scale.setScalar(0.96);
   const kit = dressRig(model, bones, key, kits, 0.96);
+  // Women's build: the mannequin is gender-neutral (broad shoulders). Narrow the shoulders and chest,
+  // slim the arms, keep the head in proportion. (Scales aren't animated, so these stay.)
+  if (bones.spine_03) bones.spine_03.scale.set(0.88, 0.97, 0.92);
+  if (bones.Head) bones.Head.scale.setScalar(1.08);
+  for (const b of ['upperarm_l', 'upperarm_r']) if (bones[b]) bones[b].scale.set(0.9, 1.04, 0.9);
+  for (const b of ['thigh_l', 'thigh_r']) if (bones[b]) bones[b].scale.set(1.04, 1, 1.04);
   // Number label above the head in the kit's colour
   label.material.map = numberLabelTexture(key.slice(1), kit.label || '#333');
   label.material.needsUpdate = true;
