@@ -599,7 +599,7 @@ function buildRig(gltf, key, label, kits) {
 // Waiting stance (as catchball players stand): hips back and low, chest well forward over the knees,
 // feet wider than the shoulders, head up. Built on top of the idle clip: the hips are lowered and pushed
 // back, the back hinges forward, the head looks up again, and the legs are re-solved so the feet stay put.
-const STANCE = { drop: 0.17, back: 0.14, pelvis: 0.48, spine: 0.22, neck: -0.36, head: -0.5, wide: 0.07 };
+const STANCE = { drop: 0.07, back: 0.06, pelvis: 0.22, spine: 0.08, neck: -0.14, head: -0.2, wide: 0.03 };
 const _ax = new THREE.Vector3(), _fw = new THREE.Vector3(), _h = new THREE.Vector3(), _k = new THREE.Vector3(), _t = new THREE.Vector3();
 const _qa = new THREE.Quaternion(), _qp = new THREE.Quaternion();
 function rotateWorld(bone, axis, angle) {
@@ -618,7 +618,7 @@ function solveLeg(thigh, calf, foot, target, fwd, side, w) {
   const cosA = (l1 * l1 + d * d - l2 * l2) / (2 * l1 * d);
   const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
   // bend direction: forward and a little out, made perpendicular to the hip → ankle line
-  const bend = fwd.clone().addScaledVector(_ax, 0.25 * side).addScaledVector(toT, -fwd.dot(toT)).normalize();
+  const bend = fwd.clone().addScaledVector(_ax, 0.5 * side).addScaledVector(toT, -fwd.dot(toT)).normalize();
   const knee = _h.clone().addScaledVector(toT, l1 * cosA).addScaledVector(bend, l1 * sinA);
   const ankle = _h.clone().addScaledVector(toT, d);
   aimBone(thigh, calf, knee.clone().sub(_h).normalize(), w);
