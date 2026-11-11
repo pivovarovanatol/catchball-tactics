@@ -4,7 +4,7 @@
   "name": "6 in the back, diagonal rainbow",
   "serving": "A",
   "intro": "",
-  "updated": "2026-11-11T02:42:15.186Z",
+  "updated": "2026-11-11T03:18:40.270Z",
   "start": {
     "pos": {
       "A1": [
@@ -209,19 +209,16 @@
     },
     {
       "cap": "",
-      "dur": 1891,
-      "arc": 115,
+      "dur": 1874,
+      "arc": 113,
       "moves": {
         "A5": [
-          67,
-          53
+          30,
+          28
         ]
       },
       "ball": {
-        "point": [
-          27,
-          27
-        ]
+        "holder": "A5"
       },
       "shot": "rainbow"
     }
