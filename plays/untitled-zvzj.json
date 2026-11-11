@@ -4,7 +4,7 @@
   "name": "Untitled",
   "serving": "A",
   "intro": "",
-  "updated": "2026-11-11T02:10:21.444Z",
+  "updated": "2026-11-11T02:10:47.686Z",
   "start": {
     "pos": {
       "A1": [
@@ -96,6 +96,20 @@
       "moves": {},
       "ball": {
         "holder": "B1"
+      }
+    },
+    {
+      "cap": "",
+      "dur": 1054,
+      "arc": 29,
+      "moves": {
+        "B6": [
+          400,
+          135
+        ]
+      },
+      "ball": {
+        "holder": "B3"
       }
     }
   ]
