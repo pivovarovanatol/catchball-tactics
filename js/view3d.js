@@ -204,7 +204,7 @@ const both = (o, sh, el, ab = 0.12) => Object.assign(o, { shL: sh, shR: sh, elL:
 function readyPose(t) {
   const b = Math.sin(t * 2.2) * 0.03;
   return pose({ hipL: -0.45, hipR: -0.4, kneeL: 0.8 + b, kneeR: 0.75 + b, spine: 0.3, neck: -0.25, drop: 0.13 + b * 0.2,
-    shL: -1.45, shR: -1.45, elL: -1.25, elR: -1.25, abL: 0.3, abR: 0.3 });
+    shL: -0.75, shR: -0.75, elL: -1.2, elR: -1.2, abL: 0.25, abR: 0.25 });
 }
 function runPose(ph, k) {
   const s = Math.sin(ph), c = Math.cos(ph);
@@ -267,8 +267,8 @@ const DEFAULT_KITS = {
 };
 const SKIN_TONES = ['#f1c7a3', '#e0ac85', '#c68b62', '#8d5a3b', '#f5d6bd', '#d29a73'];
 const HAIR = [
-  { color: '#2b1d14', style: 'pony' }, { color: '#111111', style: 'bun' }, { color: '#7a4a24', style: 'pony' },
-  { color: '#b98a3e', style: 'pony' }, { color: '#1a1a1a', style: 'short' }, { color: '#5a3518', style: 'bun' },
+  { color: '#2a1a10', style: 'pony' }, { color: '#0f0f10', style: 'bun' }, { color: '#d9b35c', style: 'pony' },
+  { color: '#3d2213', style: 'pony' }, { color: '#151515', style: 'short' }, { color: '#8a3417', style: 'bun' },
 ];
 // Body parts by bone: 0 head/neck, 1 torso, 2 arm/hand, 3 thigh, 4 calf, 5 foot
 function partOf(bone) {
@@ -420,10 +420,16 @@ function dressRig(model, bones, key, kits, scale) {
   const hm = new THREE.MeshStandardMaterial({ color: hair.color, roughness: 0.85 });
   const head = bones.Head;
   if (head) {
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.105, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.58), hm);
+    // Head on the model: x ±0.09, y 1.55–1.83, z −0.11…0.12. The hair covers the crown with some volume,
+    // reaches the hairline at the front and goes lower at the back.
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.118, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.56), hm);
     cap.castShadow = true;
-    cap.scale.set(1.02, 1.12, 1.15);
-    attachAt(cap, head, 0, 1.705, -0.012);
+    cap.scale.set(0.93, 1.06, 1.08);
+    attachAt(cap, head, 0, 1.712, 0.0);
+    const backHair = new THREE.Mesh(new THREE.SphereGeometry(0.118, 22, 14, Math.PI, Math.PI, Math.PI * 0.3, Math.PI * 0.5), hm);
+    backHair.castShadow = true;
+    backHair.scale.set(0.95, 1.05, 1.08);
+    attachAt(backHair, head, 0, 1.712, -0.006);
     if (hair.style === 'pony') {
       const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.034, 0.17, 4, 10), hm);
       tail.castShadow = true;
@@ -446,8 +452,8 @@ function dressRig(model, bones, key, kits, scale) {
 // The right arm mirrors X. `up` = upper arm (shoulder → elbow), `fore` = forearm (elbow → wrist).
 const ARM = {
   hold: { up: [0.25, -0.75, 0.6], fore: [-0.45, 0.15, 0.88] },
-  // Waiting stance: elbows in front at chest height, forearms up, hands in front of the face (ready to catch)
-  ready: { up: [0.36, -0.12, 0.92], fore: [-0.28, 0.82, 0.5] },
+  // Waiting stance: elbows low by the body, forearms forward, hands in front of the chest (ready to catch)
+  ready: { up: [0.3, -0.72, 0.63], fore: [-0.32, 0.32, 0.89] },
   // Block: both arms straight up and slightly forward over the net
   block: { up: [0.16, 0.95, 0.27], fore: [0.04, 0.95, 0.32] },
   high: { up: [0.3, 0.9, 0.3], fore: [0.15, 0.95, 0.25] },
