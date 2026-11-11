@@ -9,7 +9,7 @@ Coaches record set plays step by step. Players open a link and watch the play an
 
 - **Browse plays** in the sidebar: a folder tree with search. Click a play to open it.
 - **Watch plays.** Press ▶ Play, or use ⏮ ⏭ to go one step at a time. Blue arrows show where players run, the dashed line shows the ball.
-- **Watch in 3D.** Press **🧊 3D** under any play: the same play on a 3D court with motion-captured mannequin players
+- **Watch in 3D.** Press **🧊 3D** under any play: the same play on a 3D court with motion-captured players
   (Quaternius, CC0). Players stand in a ready stance, run,
   pass from the chest, throw overhand, jump to spike at the net, lob rainbows, and catch at chest or over their heads;
   the ball follows the shot type. Pick a camera (TV, corner, behind either team, from above, or through any

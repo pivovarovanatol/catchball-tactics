@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 const U = 30;
 const NET_H = 2.24;            // catchball net height (women's / mixed)
@@ -257,18 +258,22 @@ const approach = (cur, target, rate, dt) => cur + (target - cur) * Math.min(1, r
 const smooth = (t) => t * t * (3 - 2 * t);
 
 // ---------- Kits (uniforms) ----------
-// The mannequin has no texture map, so the kit is painted in a shader from each point's rest-pose position:
-// body part (from the skeleton) + height decide skin / jersey / shorts or leggings / shoes, and the jersey
-// gets its colour gradient and a blocky skyline silhouette. Colours come from assets/kits.json.
+// The kit is painted in a shader from each point's rest-pose position: body part (from the skeleton) + height
+// decide skin / jersey / shorts or leggings / shoes, and the jersey gets its colour gradient and a blocky
+// skyline silhouette. Skin keeps the model's own texture (face, hands), tinted per player.
+// Colours come from assets/kits.json.
 
 const DEFAULT_KITS = {
   A: { jersey: ['#86d6d1', '#4fb2aa', '#1f6a61'], number: '#f3d35e', numberOutline: null, logo: { sp: '#f3d35e', ike: '#1f6a61', girls: '#1f6a61' }, label: '#1f8f86', legsColor: '#16171b', shoes: '#eeeeee', legs: {} },
   B: { jersey: ['#efd46c', '#f39945', '#e3412b'], number: '#ffffff', numberOutline: '#e3412b', logo: { sp: '#f8f2e0', ike: '#e2392a', girls: '#e2392a' }, label: '#e3412b', legsColor: '#16171b', shoes: '#eeeeee', legs: {} },
 };
 const SKIN_TONES = ['#f1c7a3', '#e0ac85', '#c68b62', '#8d5a3b', '#f5d6bd', '#d29a73'];
+// Average colour of the skin texture (linear), used to tint it to each player's tone
+const TEX_SKIN = [0.409, 0.201, 0.092];
+// Hair meshes in player.glb: hair_long, hair_buns, hair_short (a short parted cut, worn with a ponytail)
 const HAIR = [
-  { color: '#2a1a10', style: 'pony' }, { color: '#0f0f10', style: 'bun' }, { color: '#d9b35c', style: 'long' },
-  { color: '#3d2213', style: 'pony' }, { color: '#151515', style: 'long' }, { color: '#8a3417', style: 'bun' },
+  { color: '#3a2414', style: 'long' }, { color: '#151313', style: 'buns' }, { color: '#c9a25a', style: 'short' },
+  { color: '#4a2a17', style: 'buns' }, { color: '#1c1714', style: 'long' }, { color: '#7a3518', style: 'short' },
 ];
 // Body parts by bone: 0 head/neck, 1 torso, 2 arm/hand, 3 thigh, 4 calf, 5 foot
 function partOf(bone) {
@@ -279,8 +284,8 @@ function partOf(bone) {
   if (/^(foot|ball)/.test(bone)) return 5;
   return 2;
 }
-// Rest-pose heights on the model (metres, before scaling)
-const Y = { jerseyTop: 1.52, jerseyBottom: 1.0, shortsCut: 0.8, ankle: 0.12 };
+// Rest-pose heights on the model (metres, before scaling): shoulders, waist, shorts hem, ankle
+const Y = { jerseyTop: 1.46, jerseyBottom: 0.97, shortsCut: 0.79, ankle: 0.14 };
 
 /** Adds an `aPart` attribute (body part per vertex) to each skinned geometry, once. */
 function tagParts(gltf) {
@@ -297,12 +302,14 @@ function tagParts(gltf) {
   });
 }
 
-function kitMaterial(kit, skin, leggings, seed) {
-  const m = new THREE.MeshStandardMaterial({ roughness: 0.62, metalness: 0 });
+function kitMaterial(kit, skin, leggings, seed, map) {
+  const m = new THREE.MeshStandardMaterial({ roughness: 0.62, metalness: 0, map });
   const C = (c) => ({ value: new THREE.Color(c) });
+  const tone = new THREE.Color(skin);
   const u = {
     uTop: C(kit.jersey[0]), uFar: C(kit.jersey[1]), uNear: C(kit.jersey[2]), uLegs: C(kit.legsColor || '#16171b'),
-    uShoe: C(kit.shoes || '#eeeeee'), uSkin: C(skin), uLeggings: { value: leggings ? 1 : 0 }, uSeed: { value: seed },
+    uSock: C('#f2f2f0'), uSkin: { value: new THREE.Color(tone.r / TEX_SKIN[0], tone.g / TEX_SKIN[1], tone.b / TEX_SKIN[2]) },
+    uLeggings: { value: leggings ? 1 : 0 }, uSeed: { value: seed },
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
@@ -311,7 +318,7 @@ function kitMaterial(kit, skin, leggings, seed) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPart = aPart;\nvRest = position;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-uniform vec3 uTop, uFar, uNear, uLegs, uShoe, uSkin; uniform float uLeggings, uSeed;
+uniform vec3 uTop, uFar, uNear, uLegs, uSock, uSkin; uniform float uLeggings, uSeed;
 flat varying float vPart; varying vec3 vRest;
 float h1(float n) { return fract(sin(n * 127.1 + uSeed * 31.7) * 43758.5453); }
 vec3 jersey(vec3 p) {
@@ -329,18 +336,19 @@ vec3 jersey(vec3 p) {
   }
   return c;
 }`)
-      .replace('vec4 diffuseColor = vec4( diffuse, opacity );', `
+      .replace('#include <map_fragment>', `
 float part = floor(vPart + 0.5);
-vec3 kc = uSkin;
-if (part < 0.5) kc = uSkin;
+vec3 kc = vec3(0.0);   // (0,0,0) = skin
+if (part < 0.5) kc = vec3(0.0);
 else if (part < 1.5) kc = vRest.y > ${Y.jerseyBottom.toFixed(2)} ? jersey(vRest) : uLegs;
-else if (part < 2.5) kc = uSkin;
-else if (part < 3.5) kc = (uLeggings > 0.5 || vRest.y > ${Y.shortsCut.toFixed(2)}) ? uLegs : uSkin;
-else if (part < 4.5) kc = uLeggings > 0.5 ? (vRest.y > ${Y.ankle.toFixed(2)} ? uLegs : uShoe) : uSkin;
-else kc = uShoe;
-vec4 diffuseColor = vec4( kc, opacity );`);
+else if (part < 2.5) kc = vec3(0.0);
+else if (part < 3.5) kc = (uLeggings > 0.5 || vRest.y > ${Y.shortsCut.toFixed(2)}) ? uLegs : vec3(0.0);
+else if (part < 4.5) kc = vRest.y < ${Y.ankle.toFixed(2)} ? uSock : (uLeggings > 0.5 ? uLegs : vec3(0.0));
+else kc = uSock;
+vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+diffuseColor.rgb = dot(kc, vec3(1.0)) > 0.0 ? kc : sampledDiffuseColor.rgb * uSkin;`);
   };
-  m.customProgramCacheKey = () => 'kit-v1';
+  m.customProgramCacheKey = () => 'kit-v2';
   return m;
 }
 
@@ -377,31 +385,43 @@ function decal(tex, w, h) {
   }));
 }
 
-/** Put the kit, hair, numbers and logo on a freshly cloned mannequin (still in its rest pose). */
+/** Put the kit, hair, numbers and logo on a freshly cloned player (still in its rest pose). */
 function dressRig(model, bones, key, kits, scale) {
   const team = key[0], num = key.slice(1), kit = kits[team] || DEFAULT_KITS[team];
   const idx = Number(num) - 1 + (team === 'B' ? 3 : 0);
   const leggings = (kit.legs && kit.legs[num]) ? kit.legs[num] === 'leggings' : idx % 2 === 1;
-  const mat = kitMaterial(kit, SKIN_TONES[idx % SKIN_TONES.length], leggings, team === 'A' ? 1.3 : 4.7);
-  model.traverse((o) => { if (o.isMesh) o.material = mat; });
-  model.updateMatrixWorld(true);
-
-  // Find the chest/back surfaces in the rest pose to place the number and logo
-  let back = -0.15, front = 0.12;
+  const hair = HAIR[idx % HAIR.length];
+  let body = null;
+  const hairMeshes = {};
   model.traverse((o) => {
     if (!o.isSkinnedMesh) return;
-    const P = o.geometry.getAttribute('position'), part = o.geometry.getAttribute('aPart');
-    for (let i = 0; i < P.count; i++) {
-      if (part.getX(i) !== 1) continue;
-      const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
-      if (Math.abs(x) < 0.05 && y > 1.2 && y < 1.36) { back = Math.min(back, z); front = Math.max(front, z); }
-    }
+    if (o.name === 'Superhero_Female') body = o;
+    else if (/^hair_/.test(o.name)) hairMeshes[o.name.slice(5)] = o;
   });
+  // Body: kit + tinted skin. Hair and eyebrows: the player's hair colour over the strand texture.
+  body.material = kitMaterial(kit, SKIN_TONES[idx % SKIN_TONES.length], leggings, team === 'A' ? 1.3 : 4.7, body.material.map);
+  const hc = new THREE.Color(hair.color);
+  const hairMat = (src) => new THREE.MeshStandardMaterial({ map: src.map, color: hc.clone().multiplyScalar(3.2), roughness: 0.8, side: THREE.DoubleSide });
+  for (const [style, m] of Object.entries(hairMeshes)) {
+    m.visible = style === hair.style;
+    if (m.visible) m.material = hairMat(m.material);
+  }
+  model.traverse((o) => { if (o.isSkinnedMesh && o.name === 'Eyebrows') o.material = hairMat(o.material); });
+  model.updateMatrixWorld(true);
+
+  // Chest / back surface near the centre line at a given rest-pose height
+  const P = body.geometry.getAttribute('position');
+  const surface = (y0, y1) => {
+    let back = 0, front = 0;
+    for (let i = 0; i < P.count; i++) {
+      const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
+      if (Math.abs(x) < 0.06 && y > y0 && y < y1) { back = Math.min(back, z); front = Math.max(front, z); }
+    }
+    return { back, front };
+  };
   // (x, y, z) is a point on the rest-pose body, in the mesh's own coordinates
-  let ref = null;
-  model.traverse((o) => { if (!ref && o.isSkinnedMesh) ref = o; });
   const attachAt = (obj, bone, x, y, z, ry = 0, rx = 0) => {
-    const wp = ref.localToWorld(new THREE.Vector3(x, y, z));
+    const wp = body.localToWorld(new THREE.Vector3(x, y, z));
     model.add(obj);
     obj.position.copy(model.worldToLocal(wp));
     obj.rotation.set(rx, ry, 0);
@@ -410,46 +430,39 @@ function dressRig(model, bones, key, kits, scale) {
   };
   const spine = bones.spine_03 || bones.spine_02;
   if (spine) {
-    attachAt(decal(numberTex(num, kit.number, kit.numberOutline), 0.24 / scale, 0.24 / scale), spine, 0, 1.3, back - 0.012, Math.PI);
-    attachAt(decal(logoTex(kit.logo || DEFAULT_KITS[team].logo), 0.23 / scale, 0.144 / scale), spine, 0.0, 1.3, front + 0.012, 0);
+    attachAt(decal(numberTex(num, kit.number, kit.numberOutline), 0.22 / scale, 0.22 / scale), spine, 0, 1.24, surface(1.14, 1.34).back - 0.008, Math.PI);
+    attachAt(decal(logoTex(kit.logo || DEFAULT_KITS[team].logo), 0.2 / scale, 0.125 / scale), spine, 0, 1.2, surface(1.14, 1.27).front + 0.006, 0, -0.08);
   }
-
-  // Hair
-  const hair = HAIR[idx % HAIR.length];
-  const hm = new THREE.MeshStandardMaterial({ color: hair.color, roughness: 0.85 });
-  const head = bones.Head;
-  if (head) {
-    // Head on the model: x ±0.09, y 1.55–1.83, z −0.11…0.12. The hair covers the crown with some volume,
-    // reaches the hairline at the front and goes lower at the back.
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.118, 22, 14, 0, Math.PI * 2, 0, Math.PI * 0.56), hm);
-    cap.castShadow = true;
-    cap.scale.set(0.93, 1.06, 1.08);
-    attachAt(cap, head, 0, 1.712, 0.0);
-    const backHair = new THREE.Mesh(new THREE.SphereGeometry(0.118, 22, 14, Math.PI, Math.PI, Math.PI * 0.3, Math.PI * 0.5), hm);
-    backHair.castShadow = true;
-    backHair.scale.set(0.95, 1.05, 1.08);
-    attachAt(backHair, head, 0, 1.712, -0.006);
-    if (hair.style === 'pony') {
-      const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.036, 0.24, 4, 10), hm);
-      tail.castShadow = true;
-      attachAt(tail, head, 0, 1.6, -0.15, 0, 0.3);
-    } else if (hair.style === 'long') {
-      // Hair down to the shoulders at the back
-      const fall = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 12), hm);
-      fall.castShadow = true;
-      fall.scale.set(1.0, 1.55, 0.5);
-      attachAt(fall, head, 0, 1.6, -0.1);
-    } else if (hair.style === 'bun') {
-      const bun = new THREE.Mesh(new THREE.SphereGeometry(0.055, 14, 10), hm);
-      bun.castShadow = true;
-      attachAt(bun, head, 0, 1.79, -0.085);
+  // Sneakers: the back half follows the foot bone, the toe box the toe bone (so it bends when running)
+  if (bones.foot_l && bones.ball_l) {
+    const upper = new THREE.MeshStandardMaterial({ color: kit.shoes || '#f1f1f1', roughness: 0.55 });
+    const sole = new THREE.MeshStandardMaterial({ color: '#fafafa', roughness: 0.8 });
+    const accent = new THREE.MeshStandardMaterial({ color: kit.label || '#333', roughness: 0.5 });
+    const box = (w, h, l, r, mat) => { const m = new THREE.Mesh(new RoundedBoxGeometry(w, h, l, 3, r), mat); m.castShadow = true; return m; };
+    for (const side of [1, -1]) {
+      const sfx = side > 0 ? '_l' : '_r', x = 0.124 * side;
+      // rear: heel, mid-sole and the collar around the ankle
+      attachAt(box(0.122, 0.03, 0.2, 0.012, sole), bones['foot' + sfx], x, 0.003, -0.045);
+      attachAt(box(0.118, 0.1, 0.185, 0.035, upper), bones['foot' + sfx], x, 0.06, -0.045);
+      attachAt(box(0.124, 0.045, 0.07, 0.02, accent), bones['foot' + sfx], x, 0.055, -0.105);   // heel counter
+      attachAt(box(0.006, 0.03, 0.09, 0.003, accent), bones['foot' + sfx], x + 0.06 * side, 0.05, -0.02);   // side stripe
+      // front: toe box over the toes
+      attachAt(box(0.118, 0.03, 0.12, 0.012, sole), bones['ball' + sfx], x - 0.004 * side, 0.003, 0.09);
+      attachAt(box(0.112, 0.058, 0.12, 0.028, upper), bones['ball' + sfx], x - 0.004 * side, 0.034, 0.085);
     }
+  }
+  // A ponytail with the short cut
+  if (hair.style === 'short' && bones.Head) {
+    const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.03, 0.2, 4, 10), new THREE.MeshStandardMaterial({ color: hair.color, roughness: 0.85 }));
+    tail.castShadow = true;
+    attachAt(tail, bones.Head, 0, 1.63, -0.12, 0, 0.35);
   }
   return kit;
 }
 
-// ---------- Mannequin players ----------
-// Character and motion-captured animations: Quaternius "Universal Animation Library" (CC0), assets/player.glb.
+// ---------- Rigged players ----------
+// Character: Quaternius "Universal Base Characters" (female body + hairstyles, CC0); motion-captured clips:
+// Quaternius "Universal Animation Library" (CC0), retargeted onto the same skeleton in assets/player.glb.
 // Legs and body come from the clips (idle, jog, sprint, jump); the arms are aimed in code for holding,
 // passing, throwing, spiking and catching, because the library has no ball-handling animations.
 
@@ -458,11 +471,14 @@ function dressRig(model, bones, key, kits, scale) {
 const ARM = {
   hold: { up: [0.25, -0.75, 0.6], fore: [-0.45, 0.15, 0.88] },
   // Waiting stance: elbows low by the body, forearms forward, hands in front of the chest (ready to catch)
-  ready: { up: [0.3, -0.72, 0.63], fore: [-0.32, 0.32, 0.89] },
+  // (with the body leaning forward: upper arms forward-down, forearms reaching out, hands at waist height)
+  // elbows bent ~90°: upper arms forward-down, forearms forward-up and turned in, palms open towards the ball
+  // and tilted in towards each other
+  ready: { up: [0.16, -0.8, 0.58], fore: [-0.14, 0.45, 0.88], palm: [-0.6, 0.6, 0.3] },
   // Block: both arms straight up and slightly forward over the net
   block: { up: [0.16, 0.95, 0.27], fore: [0.04, 0.95, 0.32] },
   high: { up: [0.3, 0.9, 0.3], fore: [0.15, 0.95, 0.25] },
-  mid: { up: [0.2, -0.25, 0.95], fore: [-0.15, 0.15, 1] },
+  mid: { up: [0.2, -0.25, 0.95], fore: [-0.15, 0.15, 1], palm: [-0.2, 0.6, 0.77] },
   passEnd: { up: [0.12, -0.05, 1], fore: [0, 0, 1] },
   lobLow: { up: [0.15, -0.95, 0.3], fore: [-0.25, -0.6, 0.75] },
   lobUp: { up: [0.15, 0.97, 0.25], fore: [0.05, 1, 0.15] },
@@ -478,6 +494,23 @@ const ARM = {
 };
 const nlerp = (a, b, t) => { const v = a.map((x, i) => x + (b[i] - x) * t); const l = Math.hypot(...v) || 1; return v.map((x) => x / l); };
 const armMix = (a, b, t) => ({ up: nlerp(a.up, b.up, t), fore: nlerp(a.fore, b.fore, t) });
+
+const _n = new THREE.Vector3(), _m = new THREE.Vector3(), _c = new THREE.Vector3(), _fa = new THREE.Vector3();
+/** Turn the forearm and wrist about the forearm's own axis so the palm faces `want` (world). side: 1 left, −1 right. */
+function turnPalm(B, sfx, side, want, w) {
+  const low = B['lowerarm' + sfx], hand = B['hand' + sfx], mid = B['middle_01' + sfx], ix = B['index_01' + sfx], pk = B['pinky_01' + sfx];
+  if (!low || !hand || !mid || !ix || !pk) return;
+  low.getWorldPosition(_a); hand.getWorldPosition(_b);
+  _fa.copy(_b).sub(_a).normalize();                                   // forearm axis
+  mid.getWorldPosition(_m).sub(_b);                                   // along the hand
+  ix.getWorldPosition(_c); pk.getWorldPosition(_n); _c.sub(_n);       // across, towards the thumb
+  _n.crossVectors(_m, _c).multiplyScalar(side);                       // palm normal (rest pose: palms down)
+  _n.addScaledVector(_fa, -_n.dot(_fa)).normalize();
+  _m.copy(want).addScaledVector(_fa, -want.dot(_fa)).normalize();
+  const ang = Math.atan2(_fa.dot(_c.crossVectors(_n, _m)), _n.dot(_m));
+  rotateWorld(low, _fa, ang * 0.6 * w);    // most of the turn in the forearm, the rest at the wrist
+  rotateWorld(hand, _fa, ang * 0.4 * w);
+}
 
 /** Which way each arm should point for an action ({ hold, throwKind, a, catchHigh, catchW }). */
 function armTargets(act) {
@@ -538,12 +571,6 @@ function buildRig(gltf, key, label, kits) {
   });
   model.scale.setScalar(0.96);
   const kit = dressRig(model, bones, key, kits, 0.96);
-  // Women's build: the mannequin is gender-neutral (broad shoulders). Narrow the shoulders and chest,
-  // slim the arms, keep the head in proportion. (Scales aren't animated, so these stay.)
-  if (bones.spine_03) bones.spine_03.scale.set(0.88, 0.97, 0.92);
-  if (bones.Head) bones.Head.scale.setScalar(1.08);
-  for (const b of ['upperarm_l', 'upperarm_r']) if (bones[b]) bones[b].scale.set(0.9, 1.04, 0.9);
-  for (const b of ['thigh_l', 'thigh_r']) if (bones[b]) bones[b].scale.set(1.04, 1, 1.04);
   // Number label above the head in the kit's colour
   label.material.map = numberLabelTexture(key.slice(1), kit.label || '#333');
   label.material.needsUpdate = true;
@@ -569,6 +596,36 @@ function buildRig(gltf, key, label, kits) {
   return { group, inner, model, bones, mixer, actions, weights: {}, armW: 0 };
 }
 
+// Waiting stance (as catchball players stand): hips back and low, chest well forward over the knees,
+// feet wider than the shoulders, head up. Built on top of the idle clip: the hips are lowered and pushed
+// back, the back hinges forward, the head looks up again, and the legs are re-solved so the feet stay put.
+const STANCE = { drop: 0.17, back: 0.14, pelvis: 0.48, spine: 0.22, neck: -0.36, head: -0.5, wide: 0.07 };
+const _ax = new THREE.Vector3(), _fw = new THREE.Vector3(), _h = new THREE.Vector3(), _k = new THREE.Vector3(), _t = new THREE.Vector3();
+const _qa = new THREE.Quaternion(), _qp = new THREE.Quaternion();
+function rotateWorld(bone, axis, angle) {
+  _qa.setFromAxisAngle(axis, angle);
+  bone.getWorldQuaternion(_qp);
+  _qp.premultiply(_qa);
+  bone.parent.getWorldQuaternion(_q3);
+  bone.quaternion.copy(_q3.invert().multiply(_qp));
+  bone.updateMatrixWorld(true);
+}
+/** Two-bone leg: hip → knee → ankle reaching `target`, knee pointing along `fwd`. */
+function solveLeg(thigh, calf, foot, target, fwd, side, w) {
+  thigh.getWorldPosition(_h); calf.getWorldPosition(_k); foot.getWorldPosition(_t);
+  const l1 = _h.distanceTo(_k), l2 = _k.distanceTo(_t);
+  const toT = target.clone().sub(_h); const d = Math.min(toT.length(), l1 + l2 - 1e-4); toT.normalize();
+  const cosA = (l1 * l1 + d * d - l2 * l2) / (2 * l1 * d);
+  const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
+  // bend direction: forward and a little out, made perpendicular to the hip → ankle line
+  const bend = fwd.clone().addScaledVector(_ax, 0.25 * side).addScaledVector(toT, -fwd.dot(toT)).normalize();
+  const knee = _h.clone().addScaledVector(toT, l1 * cosA).addScaledVector(bend, l1 * sinA);
+  const ankle = _h.clone().addScaledVector(toT, d);
+  aimBone(thigh, calf, knee.clone().sub(_h).normalize(), w);
+  calf.getWorldPosition(_k);
+  aimBone(calf, foot, ankle.sub(_k).normalize(), w);
+}
+
 function updateRig(p, act, dt) {
   const r = p.rig;
   // Clip weights: athletic stance (idle + a little crouch) → jog → sprint, or in the air
@@ -588,8 +645,36 @@ function updateRig(p, act, dt) {
   if (r.actions.Jog_Fwd_Loop) r.actions.Jog_Fwd_Loop.timeScale = Math.max(0.6, s / 3.2);
   if (r.actions.Sprint_Loop) r.actions.Sprint_Loop.timeScale = Math.max(0.8, s / 5.5);
   r.mixer.update(dt);
-  r.inner.position.y = act.jumpH * 0.6;
+  r.inner.position.set(0, act.jumpH * 0.6, 0);
   p.group.updateMatrixWorld(true);
+
+  // Waiting stance, faded out when running, jumping, holding or throwing the ball, blocking or reaching high
+  const busy = act.hold || act.throwKind || act.blockW > 0.01 || (act.catchW > 0 && act.catchHigh);
+  r.stanceW = approach(r.stanceW || 0, (1 - run) * (1 - air) * (busy ? 0.15 : 1), busy ? 9 : 5, dt);
+  const w = r.stanceW, RB = r.bones;
+  if (w > 0.01 && RB.pelvis && RB.spine_01 && RB.thigh_l) {
+    const feet = [['_l', 1], ['_r', -1]].map(([sfx, side]) => {
+      const f = RB['foot' + sfx];
+      return { sfx, side, pos: f.getWorldPosition(new THREE.Vector3()), q: f.getWorldQuaternion(new THREE.Quaternion()) };
+    });
+    _ax.set(1, 0, 0).applyQuaternion(p.group.quaternion);    // player's left
+    _fw.set(0, 0, 1).applyQuaternion(p.group.quaternion);    // player's forward
+    r.inner.position.y -= STANCE.drop * w;
+    r.inner.position.z -= STANCE.back * w;
+    r.inner.updateMatrixWorld(true);
+    rotateWorld(RB.pelvis, _ax, STANCE.pelvis * w);
+    rotateWorld(RB.spine_01, _ax, STANCE.spine * w);
+    if (RB.neck_01) rotateWorld(RB.neck_01, _ax, STANCE.neck * w);
+    if (RB.Head) rotateWorld(RB.Head, _ax, STANCE.head * w);
+    for (const f of feet) {
+      const target = f.pos.clone().addScaledVector(_ax, STANCE.wide * w * f.side);
+      solveLeg(RB['thigh' + f.sfx], RB['calf' + f.sfx], RB['foot' + f.sfx], target, _fw, f.side, 1);
+      const foot = RB['foot' + f.sfx];                         // keep the foot flat as it was
+      foot.parent.getWorldQuaternion(_q3);
+      foot.quaternion.copy(_q3.invert().multiply(f.q));
+      foot.updateMatrixWorld(true);
+    }
+  }
 
   // Arms on top of the animation
   const tgt = armTargets(act);
@@ -602,6 +687,7 @@ function updateRig(p, act, dt) {
     aimBone(up, low, _d.clone(), r.armW);
     _d.set(arm.fore[0] * side, arm.fore[1], arm.fore[2]).applyQuaternion(p.group.quaternion).normalize();
     aimBone(low, hand, _d.clone(), r.armW);
+    if (arm.palm) turnPalm(B, side > 0 ? '_l' : '_r', side, new THREE.Vector3(arm.palm[0] * side, arm.palm[1], arm.palm[2]).applyQuaternion(p.group.quaternion), r.armW);
   }
 }
 
@@ -927,6 +1013,8 @@ export function create(container) {
     stop() { running = false; cancelAnimationFrame(raf); },
     snapPlayers() { for (const k of KEYS) players[k].last = null; },
     ballPosition() { return ball.position.toArray(); },
+    /** Test hook: look at a player from (dx, dy, dz) metres away. */
+    peek(k, dx, dy, dz, ty = 1.1) { const q = players[k].group.position; camMode = 'free'; camAnim = null; controls.target.set(q.x, ty, q.z); camera.position.set(q.x + dx, dy, q.z + dz); controls.update(); },
     bodyHeights(k) { const p = players[k]; if (!p.rig) return null; const v = new THREE.Vector3(); const o = {};
       for (const b of ['hand_l', 'hand_r', 'Head']) { p.rig.bones[b].getWorldPosition(v); o[b] = +v.y.toFixed(2); } return o; },
   };

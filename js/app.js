@@ -2,8 +2,8 @@
 import {
   KEYS, clone, clamp, dist, startZones, lineup, buildSnaps, ballPos, sameBall,
   autoTiming, stepArrows, describeStep, render, SHOTS, shotTiming, ballLift,
-} from './core.js?v=202611101721';
-import * as store from './store.js?v=202611101721';
+} from './core.js?v=202611101757';
+import * as store from './store.js?v=202611101757';
 
 const $ = (id) => document.getElementById(id);
 const svg = $('court');
@@ -909,4 +909,5 @@ async function init() {
 window.cbSeek = (cursor, t) => { if (!view) return; stopAnim(); view.cursor = cursor; view.t = t; drawView(); };
 window.cbBall = () => (v3 ? v3.ballPosition() : null);
 window.cbBody = (k) => (v3 ? v3.bodyHeights(k) : null);
+window.cbPeek = (...a) => v3 && v3.peek(...a);
 init();
