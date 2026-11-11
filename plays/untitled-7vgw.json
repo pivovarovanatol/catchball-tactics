@@ -4,7 +4,7 @@
   "name": "6 in the back straight rainbow",
   "serving": "A",
   "intro": "",
-  "updated": "2026-11-11T02:44:30.777Z",
+  "updated": "2026-11-11T03:17:18.757Z",
   "start": {
     "pos": {
       "A1": [
@@ -221,12 +221,12 @@
     },
     {
       "cap": "",
-      "dur": 1748,
-      "arc": 94,
+      "dur": 1751,
+      "arc": 95,
       "moves": {
         "A1": [
-          35,
-          30
+          34,
+          33
         ],
         "A6": [
           98,
