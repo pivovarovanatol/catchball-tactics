@@ -841,6 +841,11 @@ export function create(container) {
       }
     }
 
+    // Ball behind a team's end line (a serve being prepared, or just struck and still on that side)
+    const ownSideBehind = (k) => {
+      const side = k[0] === 'A' ? -1 : 1;
+      return Math.sign(ball.position.x) === side && Math.abs(ball.position.x) > 8.6;
+    };
     for (const k of KEYS) {
       const p = players[k];
       const w = toWorld(frame.pos[k]);
@@ -855,6 +860,8 @@ export function create(container) {
       if (f && f.from.holder === k && u === 0) target = angleTo(w, f.to.holder ? toWorld(frame.pos[f.to.holder]) : toWorld(f.to.point));
       else if (blockers.has(k)) target = angleTo(w, toWorld(frame.pos[f.from.holder]));
       else if (p.speed > 0.6) target = Math.atan2(vel.x, vel.z);
+      // Serve from behind our own end line: everyone on the serving team (server included) faces the net
+      else if (ownSideBehind(k)) target = k[0] === 'A' ? Math.PI / 2 : -Math.PI / 2;
       else target = angleTo(w, ball.position);
       p.yaw += wrap(target - p.yaw) * Math.min(1, dt * 7);
       p.group.rotation.y = p.yaw;
