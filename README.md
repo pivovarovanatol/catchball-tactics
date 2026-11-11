@@ -14,6 +14,9 @@ Coaches record set plays step by step. Players open a link and watch the play an
   pass from the chest, throw overhand, jump to spike at the net, lob rainbows, and catch at chest or over their heads;
   the ball follows the shot type. Pick a camera (TV, corner, behind either team, from above, or through any
   player's eyes), drag to rotate, scroll/pinch to zoom, ⛶ for full screen. **▦ 2D** switches back. Your choice is remembered.
+- **Team kits in 3D.** Players wear the team's jerseys (colour gradient and skyline silhouette, number on the back,
+  "Spike girls" on the chest), black leggings or short shorts, and varied hair and skin tones. Colours, number style
+  and who wears leggings vs. shorts are set in [`assets/kits.json`](assets/kits.json) (`A` = Blue side, `B` = Red side).
 - **Shot types.** A step where the ball moves can be a normal throw, a **⚡ spike** (straight, hard and fast, drawn as a
   solid yellow line) or a **🌈 rainbow** (a high, slow parachute arc, drawn as a dotted blue curve). Pick it in the editor's
   *Shot* row; timing and ball height adjust automatically, in 2D and in 3D.
@@ -44,6 +47,7 @@ catchball-tactics/
 │   ├── store.js            # loading plays, local drafts, GitHub publishing
 │   ├── view3d.js           # 3D replay (Three.js, loaded only when 3D is opened)
 ├── assets/player.glb       # 3D player model + animations (Quaternius, CC0; see assets/CREDITS.md)
+├── assets/kits.json        # team kit colours for the 3D players
 │   └── app.js              # UI: list, playback, free board, editor, settings
 ├── plays/
 │   ├── index.json          # folders + list of plays and the folder each one is in

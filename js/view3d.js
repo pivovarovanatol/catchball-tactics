@@ -256,6 +256,187 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const approach = (cur, target, rate, dt) => cur + (target - cur) * Math.min(1, rate * dt);
 const smooth = (t) => t * t * (3 - 2 * t);
 
+// ---------- Kits (uniforms) ----------
+// The mannequin has no texture map, so the kit is painted in a shader from each point's rest-pose position:
+// body part (from the skeleton) + height decide skin / jersey / shorts or leggings / shoes, and the jersey
+// gets its colour gradient and a blocky skyline silhouette. Colours come from assets/kits.json.
+
+const DEFAULT_KITS = {
+  A: { jersey: ['#86d6d1', '#4fb2aa', '#1f6a61'], number: '#f3d35e', numberOutline: null, logo: { sp: '#f3d35e', ike: '#1f6a61', girls: '#1f6a61' }, label: '#1f8f86', legsColor: '#16171b', shoes: '#eeeeee', legs: {} },
+  B: { jersey: ['#efd46c', '#f39945', '#e3412b'], number: '#ffffff', numberOutline: '#e3412b', logo: { sp: '#f8f2e0', ike: '#e2392a', girls: '#e2392a' }, label: '#e3412b', legsColor: '#16171b', shoes: '#eeeeee', legs: {} },
+};
+const SKIN_TONES = ['#f1c7a3', '#e0ac85', '#c68b62', '#8d5a3b', '#f5d6bd', '#d29a73'];
+const HAIR = [
+  { color: '#2b1d14', style: 'pony' }, { color: '#111111', style: 'bun' }, { color: '#7a4a24', style: 'pony' },
+  { color: '#b98a3e', style: 'pony' }, { color: '#1a1a1a', style: 'short' }, { color: '#5a3518', style: 'bun' },
+];
+// Body parts by bone: 0 head/neck, 1 torso, 2 arm/hand, 3 thigh, 4 calf, 5 foot
+function partOf(bone) {
+  if (/^(Head|neck)/.test(bone)) return 0;
+  if (/^(spine|clavicle|pelvis|root)/.test(bone)) return 1;
+  if (/^(thigh)/.test(bone)) return 3;
+  if (/^(calf)/.test(bone)) return 4;
+  if (/^(foot|ball)/.test(bone)) return 5;
+  return 2;
+}
+// Rest-pose heights on the model (metres, before scaling)
+const Y = { jerseyTop: 1.52, jerseyBottom: 0.9, shortsCut: 0.8, ankle: 0.12 };
+
+/** Adds an `aPart` attribute (body part per vertex) to each skinned geometry, once. */
+function tagParts(gltf) {
+  gltf.scene.traverse((o) => {
+    if (!o.isSkinnedMesh || o.geometry.getAttribute('aPart')) return;
+    const J = o.geometry.getAttribute('skinIndex'), W = o.geometry.getAttribute('skinWeight');
+    const parts = new Float32Array(J.count);
+    for (let i = 0; i < J.count; i++) {
+      let best = 0, bw = -1;
+      for (let c = 0; c < 4; c++) { const w = W.getComponent(i, c); if (w > bw) { bw = w; best = J.getComponent(i, c); } }
+      parts[i] = partOf(o.skeleton.bones[best].name);
+    }
+    o.geometry.setAttribute('aPart', new THREE.BufferAttribute(parts, 1));
+  });
+}
+
+function kitMaterial(kit, skin, leggings, seed) {
+  const m = new THREE.MeshStandardMaterial({ roughness: 0.62, metalness: 0 });
+  const C = (c) => ({ value: new THREE.Color(c) });
+  const u = {
+    uTop: C(kit.jersey[0]), uFar: C(kit.jersey[1]), uNear: C(kit.jersey[2]), uLegs: C(kit.legsColor || '#16171b'),
+    uShoe: C(kit.shoes || '#eeeeee'), uSkin: C(skin), uLeggings: { value: leggings ? 1 : 0 }, uSeed: { value: seed },
+  };
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float aPart;\nflat varying float vPart;\nvarying vec3 vRest;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPart = aPart;\nvRest = position;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+uniform vec3 uTop, uFar, uNear, uLegs, uShoe, uSkin; uniform float uLeggings, uSeed;
+flat varying float vPart; varying vec3 vRest;
+float h1(float n) { return fract(sin(n * 127.1 + uSeed * 31.7) * 43758.5453); }
+vec3 jersey(vec3 p) {
+  float t = clamp((${Y.jerseyTop.toFixed(2)} - p.y) / ${(Y.jerseyTop - Y.jerseyBottom).toFixed(2)}, 0.0, 1.0);   // 0 = shoulders, 1 = hem
+  float a = atan(p.x, p.z) / 6.2832 + 0.5;                                             // 0..1 around the body
+  vec3 c = mix(uTop, mix(uTop, uFar, 0.35), smoothstep(0.1, 0.6, t));
+  float nf = floor(a * 26.0), nn = floor(a * 17.0 + 0.5);
+  float far = 0.42 + 0.26 * h1(nf), near = 0.22 + 0.22 * h1(nn + 50.0);
+  if (1.0 - t < far) c = uFar;
+  if (1.0 - t < near) {
+    c = uNear;
+    // a few lit windows in the near buildings
+    vec2 w = vec2(fract(a * 17.0 * 4.0), fract(p.y * 26.0));
+    if (w.x > 0.3 && w.x < 0.62 && w.y > 0.35 && w.y < 0.75 && h1(floor(a * 68.0) + floor(p.y * 26.0) * 7.0) > 0.55 && 1.0 - t > 0.08) c = mix(uNear, uFar, 0.7);
+  }
+  if (1.0 - t < 0.06) c = uNear;
+  return c;
+}`)
+      .replace('vec4 diffuseColor = vec4( diffuse, opacity );', `
+float part = floor(vPart + 0.5);
+vec3 kc = uSkin;
+if (part < 0.5) kc = uSkin;
+else if (part < 1.5) kc = vRest.y > ${Y.jerseyBottom.toFixed(2)} ? jersey(vRest) : uLegs;
+else if (part < 2.5) kc = uSkin;
+else if (part < 3.5) kc = (uLeggings > 0.5 || vRest.y > ${Y.shortsCut.toFixed(2)}) ? uLegs : uSkin;
+else if (part < 4.5) kc = uLeggings > 0.5 ? (vRest.y > ${Y.ankle.toFixed(2)} ? uLegs : uShoe) : uSkin;
+else kc = uShoe;
+vec4 diffuseColor = vec4( kc, opacity );`);
+  };
+  m.customProgramCacheKey = () => 'kit-v1';
+  return m;
+}
+
+function numberTex(num, fill, outline) {
+  return canvasTexture(256, 256, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    g.font = 'bold 200px system-ui, Arial, sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    if (outline) { g.lineWidth = 14; g.strokeStyle = outline; g.lineJoin = 'round'; g.strokeText(num, w / 2, h / 2 + 10); }
+    g.fillStyle = fill; g.fillText(num, w / 2, h / 2 + 10);
+  });
+}
+function logoTex(logo) {
+  return canvasTexture(512, 320, (g, w, h) => {
+    g.clearRect(0, 0, w, h);
+    g.textBaseline = 'alphabetic';
+    g.font = '900 150px system-ui, Arial, sans-serif';
+    const sp = 'Sp', ike = 'ike', wsp = g.measureText(sp).width, wike = g.measureText(ike).width;
+    const x0 = (w - wsp - wike) / 2;
+    g.fillStyle = logo.sp; g.fillText(sp, x0, 175);
+    g.fillStyle = logo.ike; g.fillText(ike, x0 + wsp, 175);
+    // Space Needle: a little tower over the "i"
+    g.fillStyle = logo.sp;
+    const nx = x0 + wsp + 18;
+    g.fillRect(nx - 4, 20, 8, 80); g.beginPath(); g.ellipse(nx, 40, 34, 9, 0, 0, Math.PI * 2); g.fill();
+    g.font = '800 92px system-ui, Arial, sans-serif';
+    g.textAlign = 'center'; g.fillStyle = logo.girls; g.fillText('girls', w / 2 + 40, 285);
+  });
+}
+
+function decal(tex, w, h) {
+  return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({
+    map: tex, transparent: true, depthWrite: false, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2,
+  }));
+}
+
+/** Put the kit, hair, numbers and logo on a freshly cloned mannequin (still in its rest pose). */
+function dressRig(model, bones, key, kits, scale) {
+  const team = key[0], num = key.slice(1), kit = kits[team] || DEFAULT_KITS[team];
+  const idx = Number(num) - 1 + (team === 'B' ? 3 : 0);
+  const leggings = (kit.legs && kit.legs[num]) ? kit.legs[num] === 'leggings' : idx % 2 === 1;
+  const mat = kitMaterial(kit, SKIN_TONES[idx % SKIN_TONES.length], leggings, team === 'A' ? 1.3 : 4.7);
+  model.traverse((o) => { if (o.isMesh) o.material = mat; });
+  model.updateMatrixWorld(true);
+
+  // Find the chest/back surfaces in the rest pose to place the number and logo
+  let back = -0.15, front = 0.12;
+  model.traverse((o) => {
+    if (!o.isSkinnedMesh) return;
+    const P = o.geometry.getAttribute('position'), part = o.geometry.getAttribute('aPart');
+    for (let i = 0; i < P.count; i++) {
+      if (part.getX(i) !== 1) continue;
+      const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
+      if (Math.abs(x) < 0.05 && y > 1.2 && y < 1.36) { back = Math.min(back, z); front = Math.max(front, z); }
+    }
+  });
+  // (x, y, z) is a point on the rest-pose body, in the mesh's own coordinates
+  let ref = null;
+  model.traverse((o) => { if (!ref && o.isSkinnedMesh) ref = o; });
+  const attachAt = (obj, bone, x, y, z, ry = 0, rx = 0) => {
+    const wp = ref.localToWorld(new THREE.Vector3(x, y, z));
+    model.add(obj);
+    obj.position.copy(model.worldToLocal(wp));
+    obj.rotation.set(rx, ry, 0);
+    obj.updateMatrixWorld(true);
+    bone.attach(obj);   // keep the placement, then follow the bone
+  };
+  const spine = bones.spine_03 || bones.spine_02;
+  if (spine) {
+    attachAt(decal(numberTex(num, kit.number, kit.numberOutline), 0.24 / scale, 0.24 / scale), spine, 0, 1.3, back - 0.012, Math.PI);
+    attachAt(decal(logoTex(kit.logo || DEFAULT_KITS[team].logo), 0.23 / scale, 0.144 / scale), spine, 0.0, 1.3, front + 0.012, 0);
+  }
+
+  // Hair
+  const hair = HAIR[idx % HAIR.length];
+  const hm = new THREE.MeshStandardMaterial({ color: hair.color, roughness: 0.85 });
+  const head = bones.Head;
+  if (head) {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.105, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.58), hm);
+    cap.castShadow = true;
+    cap.scale.set(1.02, 1.12, 1.15);
+    attachAt(cap, head, 0, 1.705, -0.012);
+    if (hair.style === 'pony') {
+      const tail = new THREE.Mesh(new THREE.CapsuleGeometry(0.034, 0.17, 4, 10), hm);
+      tail.castShadow = true;
+      attachAt(tail, head, 0, 1.64, -0.14, 0, 0.35);
+    } else if (hair.style === 'bun') {
+      const bun = new THREE.Mesh(new THREE.SphereGeometry(0.055, 14, 10), hm);
+      bun.castShadow = true;
+      attachAt(bun, head, 0, 1.79, -0.085);
+    }
+  }
+  return kit;
+}
+
 // ---------- Mannequin players ----------
 // Character and motion-captured animations: Quaternius "Universal Animation Library" (CC0), assets/player.glb.
 // Legs and body come from the clips (idle, jog, sprint, jump); the arms are aimed in code for holding,
@@ -325,18 +506,30 @@ function aimBone(bone, child, dirWorld, w) {
   bone.updateMatrixWorld(true);
 }
 
+function numberLabelTexture(num, color) {
+  return canvasTexture(128, 128, (g, w, h) => {
+    g.fillStyle = color;
+    g.beginPath(); g.arc(w / 2, h / 2, w / 2 - 6, 0, Math.PI * 2); g.fill();
+    g.lineWidth = 8; g.strokeStyle = '#fff'; g.stroke();
+    g.fillStyle = '#fff'; g.font = 'bold 72px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(num), w / 2, h / 2 + 4);
+  });
+}
+
 const RIG_CLIPS = ['Idle_Loop', 'Crouch_Idle_Loop', 'Jog_Fwd_Loop', 'Sprint_Loop', 'Jump_Loop'];
 
-function buildRig(gltf, key, label) {
+function buildRig(gltf, key, label, kits) {
   const model = SkeletonUtils.clone(gltf.scene);
-  const team = new THREE.MeshStandardMaterial({ color: TEAM[key[0]], roughness: 0.45, metalness: 0.05 });
-  const joints = new THREE.MeshStandardMaterial({ color: 0x23252b, roughness: 0.6 });
   const bones = {};
   model.traverse((o) => {
     if (o.isBone) bones[o.name] = o;
-    if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; o.material = o.material && /joint/i.test(o.material.name) ? joints : team; }
+    if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; }
   });
   model.scale.setScalar(0.96);
+  const kit = dressRig(model, bones, key, kits, 0.96);
+  // Number label above the head in the kit's colour
+  label.material.map = numberLabelTexture(key.slice(1), kit.label || '#333');
+  label.material.needsUpdate = true;
   const group = new THREE.Group();
   const inner = new THREE.Group();
   inner.add(model);
@@ -422,10 +615,14 @@ export function create(container) {
 
   // Swap in the mannequin players once their model has loaded (the simple figures stay if it fails)
   const modelUrl = new URL('../assets/player.glb' + new URL(import.meta.url).search, import.meta.url);
-  new GLTFLoader().load(modelUrl.href, (gltf) => {
+  const kitsUrl = new URL('../assets/kits.json' + new URL(import.meta.url).search, import.meta.url);
+  const kitsReady = fetch(kitsUrl).then((r) => (r.ok ? r.json() : DEFAULT_KITS)).catch(() => DEFAULT_KITS);
+  new GLTFLoader().load(modelUrl.href, async (gltf) => {
+    const kits = await kitsReady;
+    tagParts(gltf);
     for (const k of KEYS) {
       const old = players[k];
-      const rig = buildRig(gltf, k, old.label);
+      const rig = buildRig(gltf, k, old.label, kits);
       rig.group.position.copy(old.group.position);
       scene.remove(old.group);
       scene.add(rig.group);

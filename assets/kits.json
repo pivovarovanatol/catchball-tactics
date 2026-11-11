@@ -1,0 +1,25 @@
+{
+  "_comment": "Team kits for the 3D view. A = Blue side, B = Red side. Colours are CSS hex. jersey: [top, skyline far, skyline near/bottom]. legs: per player number, 'leggings' or 'shorts'.",
+  "A": {
+    "name": "Spike girls (teal)",
+    "jersey": ["#86d6d1", "#4fb2aa", "#1f6a61"],
+    "number": "#f3d35e",
+    "numberOutline": null,
+    "logo": { "sp": "#f3d35e", "ike": "#1f6a61", "girls": "#1f6a61" },
+    "label": "#1f8f86",
+    "legsColor": "#16171b",
+    "shoes": "#eeeeee",
+    "legs": { "1": "shorts", "2": "leggings", "3": "shorts", "4": "leggings", "5": "leggings", "6": "shorts" }
+  },
+  "B": {
+    "name": "Spike girls (sunset)",
+    "jersey": ["#efd46c", "#f39945", "#e3412b"],
+    "number": "#ffffff",
+    "numberOutline": "#e3412b",
+    "logo": { "sp": "#f8f2e0", "ike": "#e2392a", "girls": "#e2392a" },
+    "label": "#e3412b",
+    "legsColor": "#16171b",
+    "shoes": "#eeeeee",
+    "legs": { "1": "leggings", "2": "shorts", "3": "leggings", "4": "shorts", "5": "shorts", "6": "leggings" }
+  }
+}
