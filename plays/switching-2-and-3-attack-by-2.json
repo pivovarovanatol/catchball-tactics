@@ -4,7 +4,7 @@
   "name": "Switching 2 and 3, attack by 2",
   "serving": "A",
   "intro": "",
-  "updated": "2026-11-10T03:28:58Z",
+  "updated": "2026-11-11T03:00:56.301Z",
   "start": {
     "pos": {
       "A1": [
@@ -93,9 +93,13 @@
     },
     {
       "cap": "",
-      "dur": 922,
+      "dur": 925,
       "arc": 20,
       "moves": {
+        "A1": [
+          79,
+          217
+        ],
         "B2": [
           338,
           147
